@@ -1,0 +1,449 @@
+/* ─────────────────────────────────────────────
+   Agent Blueprint Generator — Styles
+   ───────────────────────────────────────────── */
+
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #1a202c;
+  --text-muted: #64748b;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #eef2ff;
+  --skill-color: #2563eb;
+  --skill-bg: #eff6ff;
+  --eval-color: #7c3aed;
+  --eval-bg: #f5f3ff;
+  --sv-color: #0891b2;
+  --sv-bg: #ecfeff;
+  --agent-color: #059669;
+  --agent-bg: #ecfdf5;
+  --danger: #ef4444;
+  --warning-color: #d97706;
+  --warning-bg: #fffbeb;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── Header ────────────────────────────────── */
+
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 1.5rem 2rem;
+}
+
+.header-inner { max-width: 1400px; margin: 0 auto; }
+
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* ── Main Layout ───────────────────────────── */
+
+.main {
+  max-width: 1400px;
+  margin: 1.5rem auto;
+  padding: 0 2rem;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Panels ────────────────────────────────── */
+
+.panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.panel-header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Buttons ───────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.4rem 0.75rem;
+  transition: all 0.15s ease;
+  background: var(--primary-light);
+  color: var(--primary);
+  width: auto;
+  box-shadow: none;
+}
+
+.btn:hover { background: #dde4ff; }
+
+.btn-sm { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.btn-outline:hover { background: var(--bg); }
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-generate {
+  margin: 1rem 1.25rem;
+  width: calc(100% - 2.5rem);
+  padding: 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* ── Nugget List ───────────────────────────── */
+
+.nugget-list {
+  padding: 0.75rem;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+}
+
+.nugget-card {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.nugget-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary-light);
+}
+
+.nugget-card.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.nugget-card.selected .nugget-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.nugget-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.nugget-check {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  font-size: 0.7rem;
+  transition: all 0.15s ease;
+}
+
+.nugget-info { flex: 1; }
+
+.nugget-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.nugget-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.nugget-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  padding-left: 1.85rem;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.tag-type {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.625rem;
+  letter-spacing: 0.03em;
+}
+
+.tag-type.skill { background: var(--skill-bg); color: var(--skill-color); }
+.tag-type.evaluation { background: var(--eval-bg); color: var(--eval-color); }
+
+.tag-category {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* ── Output Panel ──────────────────────────── */
+
+.output-panel {
+  min-height: 400px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 1rem;
+  color: #cbd5e1;
+}
+
+.empty-icon.warn { color: var(--warning-color); }
+
+.empty-state p { font-size: 0.875rem; margin-bottom: 0.25rem; }
+.empty-state .hint { font-size: 0.8125rem; color: #94a3b8; }
+
+.results { padding: 1rem 1.25rem; }
+
+.result-section { margin-bottom: 1.5rem; }
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+}
+
+.section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sv-icon { background: var(--sv-bg); color: var(--sv-color); }
+.agent-icon { background: var(--agent-bg); color: var(--agent-color); }
+
+/* ── Blueprint Cards ───────────────────────── */
+
+.blueprint-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition: box-shadow 0.15s ease;
+}
+
+.blueprint-card:hover { box-shadow: var(--shadow-md); }
+
+.blueprint-card.sv-card { border-left: 3px solid var(--sv-color); }
+.blueprint-card.agent-card { border-left: 3px solid var(--agent-color); }
+
+.blueprint-card h4 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.blueprint-card .card-id {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  margin-bottom: 0.5rem;
+}
+
+.blueprint-card .card-purpose {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.blueprint-card .card-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.nugget-ref-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.nugget-ref {
+  font-size: 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  background: var(--bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.capability-list {
+  list-style: none;
+  padding: 0;
+}
+
+.capability-list li {
+  font-size: 0.8125rem;
+  color: var(--text);
+  padding: 0.25rem 0;
+  padding-left: 1.25rem;
+  position: relative;
+}
+
+.capability-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--agent-color);
+  font-weight: 600;
+}
+
+.agent-type-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 100px;
+  background: var(--agent-bg);
+  color: var(--agent-color);
+  margin-bottom: 0.5rem;
+}
+
+.metadata {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Loading State ─────────────────────────── */
+
+.btn-generate.loading {
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 0.5rem;
+}
+
+/* ── Animation ─────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.blueprint-card { animation: fadeIn 0.25s ease-out backwards; }
+.blueprint-card:nth-child(1) { animation-delay: 0.05s; }
+.blueprint-card:nth-child(2) { animation-delay: 0.15s; }
+.blueprint-card:nth-child(3) { animation-delay: 0.25s; }
+.blueprint-card:nth-child(4) { animation-delay: 0.35s; }

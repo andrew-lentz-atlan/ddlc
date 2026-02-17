@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contract — DDLC</title>
+    <link rel="stylesheet" href="/static/ddlc.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>
+            <a href="/">DDLC</a>
+            <span class="subtitle" id="headerTitle">Loading...</span>
+        </h1>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn" onclick="ContractApp.showYamlPanel()" id="yamlToggle" style="display:none;">YAML Preview</button>
+            <a href="/" class="btn">Back to Dashboard</a>
+        </div>
+    </header>
+
+    <!-- Stage stepper -->
+    <div class="container-wide">
+        <div class="stage-stepper" id="stepper"></div>
+
+        <div class="contract-layout">
+            <!-- Sidebar -->
+            <aside class="contract-sidebar" id="sidebar"></aside>
+
+            <!-- Main content -->
+            <main class="contract-main" id="mainContent"></main>
+        </div>
+    </div>
+
+    <!-- YAML slide-out panel -->
+    <div id="yamlOverlay" style="display:none; position:fixed; top:0; right:0; bottom:0; width:50%; max-width:640px; z-index:200; background:var(--bg); border-left:1px solid var(--border); box-shadow: -4px 0 20px rgba(0,0,0,0.5); overflow-y:auto;">
+        <div class="yaml-panel" style="border:none; border-radius:0; height:100%;">
+            <div class="yaml-header">
+                <h3>ODCS v3.1.0 YAML</h3>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-sm" onclick="ContractApp.downloadYaml()">Download</button>
+                    <button class="btn-icon" onclick="ContractApp.hideYamlPanel()" style="font-size:1.2rem;">&#x2715;</button>
+                </div>
+            </div>
+            <div class="yaml-content">
+                <pre id="yamlOutput">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/ddlc.js?v=3"></script>
+    <script src="/static/contract-builder.js?v=3"></script>
+    <script src="/static/yaml-preview.js?v=3"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            ContractApp.init();
+        });
+    </script>
+</body>
+</html>
