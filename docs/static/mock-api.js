@@ -91,7 +91,7 @@
 
     // Session 1: SPECIFICATION — Customer 360 (richest demo)
     function _buildCustomer360() {
-        const id = _uuid(), cid = _uuid();
+        const id = 'demo-customer-360', cid = 'demo-contract-customer-360';
         return {
             id, current_stage: 'specification',
             request: {
@@ -196,7 +196,7 @@
 
     // Session 2: REVIEW — Order Events Fact Table
     function _buildOrderEvents() {
-        const id = _uuid();
+        const id = 'demo-order-events';
         return {
             id, current_stage: 'review',
             request: {
@@ -212,7 +212,7 @@
                 created_at: _ts(8),
             },
             contract: {
-                id: _uuid(), api_version: 'v3.1.0', kind: 'DataContract',
+                id: 'demo-contract-order-events', api_version: 'v3.1.0', kind: 'DataContract',
                 name: 'Order Events Fact', version: '0.2.0', status: 'draft',
                 domain: 'Revenue Analytics', tenant: null,
                 data_product: 'Revenue Intelligence',
@@ -270,7 +270,7 @@
 
     // Session 3: ACTIVE — Product Catalog Dimension
     function _buildProductCatalog() {
-        const id = _uuid();
+        const id = 'demo-product-catalog';
         return {
             id, current_stage: 'active',
             request: {
@@ -286,7 +286,7 @@
                 created_at: _ts(14),
             },
             contract: {
-                id: _uuid(), api_version: 'v3.1.0', kind: 'DataContract',
+                id: 'demo-contract-product-catalog', api_version: 'v3.1.0', kind: 'DataContract',
                 name: 'Product Catalog Dimension', version: '1.0.0', status: 'active',
                 domain: 'Product', tenant: null,
                 data_product: 'Product Analytics',
@@ -343,7 +343,7 @@
 
     // Session 4: REQUEST — Marketing Attribution Model (fresh)
     function _buildMarketingAttribution() {
-        const id = _uuid();
+        const id = 'demo-marketing-attribution';
         return {
             id, current_stage: 'request',
             request: {
@@ -359,7 +359,7 @@
                 created_at: _ts(1),
             },
             contract: {
-                id: _uuid(), api_version: 'v3.1.0', kind: 'DataContract',
+                id: 'demo-contract-marketing', api_version: 'v3.1.0', kind: 'DataContract',
                 name: 'Marketing Attribution', version: '0.1.0', status: 'proposed',
                 domain: 'Marketing Analytics', tenant: null, data_product: null,
                 description_purpose: null, description_limitations: null, description_usage: null,
@@ -381,7 +381,7 @@
 
     // Session 5: DISCOVERY — Daily Inventory Snapshot
     function _buildInventorySnapshot() {
-        const id = _uuid();
+        const id = 'demo-inventory-snapshot';
         return {
             id, current_stage: 'discovery',
             request: {
@@ -397,7 +397,7 @@
                 created_at: _ts(3),
             },
             contract: {
-                id: _uuid(), api_version: 'v3.1.0', kind: 'DataContract',
+                id: 'demo-contract-inventory', api_version: 'v3.1.0', kind: 'DataContract',
                 name: 'Daily Inventory Snapshot', version: '0.1.0', status: 'proposed',
                 domain: 'Supply Chain', tenant: null, data_product: null,
                 description_purpose: null, description_limitations: null, description_usage: null,
