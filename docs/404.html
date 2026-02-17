@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Redirecting...</title></head>
+<body>
+<script>
+    // SPA redirect for GitHub Pages
+    // Handles /contract/{id} -> contract.html?id={id}
+    var path = window.location.pathname;
+    var repo = path.match(/^\/[^/]+\//);  // e.g. /ddlc/
+    var base = repo ? repo[0] : '/';
+    var rest = path.replace(base, '');
+
+    var contractMatch = rest.match(/^contract\/(.+)/);
+    if (contractMatch) {
+        window.location.replace(base + 'contract.html?id=' + contractMatch[1]);
+    } else {
+        window.location.replace(base);
+    }
+</script>
+</body>
+</html>
