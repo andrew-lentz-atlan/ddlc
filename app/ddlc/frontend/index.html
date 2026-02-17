@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDLC — Data Contract Development Lifecycle</title>
+    <link rel="stylesheet" href="/static/ddlc.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>
+            <a href="/">DDLC</a>
+            <span class="subtitle">Data Contract Development Lifecycle</span>
+        </h1>
+        <a href="/request" class="btn btn-primary">+ New Request</a>
+    </header>
+
+    <div class="container">
+        <!-- Stats -->
+        <div class="dashboard-stats" id="stats"></div>
+
+        <!-- Filter tabs -->
+        <div class="filter-tabs" id="filters"></div>
+
+        <!-- Sessions list -->
+        <div class="sessions-list" id="sessions"></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/ddlc.js?v=2"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            DDLC.dashboard.init();
+        });
+    </script>
+</body>
+</html>

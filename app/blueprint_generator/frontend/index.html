@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Blueprint Generator</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <h1>Agent Blueprint Generator</h1>
+      <p class="subtitle">Select context nuggets to generate semantic views and agent blueprints</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Left Panel: Nugget Selector -->
+    <section class="panel nugget-panel">
+      <div class="panel-header">
+        <h2>Context Nuggets</h2>
+        <div class="panel-actions">
+          <button class="btn btn-sm" onclick="selectAll()">Select All</button>
+          <button class="btn btn-sm btn-outline" onclick="selectNone()">Clear</button>
+        </div>
+      </div>
+      <div id="nuggetList" class="nugget-list">
+        <!-- Populated by JS -->
+      </div>
+      <button id="generateBtn" class="btn btn-primary btn-generate" onclick="generateBlueprints()">
+        Generate Blueprints
+      </button>
+    </section>
+
+    <!-- Right Panel: Blueprint Output -->
+    <section class="panel output-panel">
+      <div class="panel-header">
+        <h2>Generated Blueprints</h2>
+        <div id="metadata" class="metadata"></div>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+          </svg>
+        </div>
+        <p>Select nuggets and click <strong>Generate Blueprints</strong></p>
+      </div>
+
+      <div id="results" class="results" style="display: none;">
+        <!-- Semantic View Blueprints -->
+        <div id="svSection" class="result-section">
+          <h3 class="section-title">
+            <span class="section-icon sv-icon">SV</span>
+            Semantic View Blueprints
+          </h3>
+          <div id="svCards"></div>
+        </div>
+
+        <!-- Agent Blueprints -->
+        <div id="agentSection" class="result-section">
+          <h3 class="section-title">
+            <span class="section-icon agent-icon">AG</span>
+            Agent Blueprints
+          </h3>
+          <div id="agentCards"></div>
+        </div>
+      </div>
+
+      <div id="noResults" class="empty-state" style="display: none;">
+        <div class="empty-icon warn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+        </div>
+        <p>No blueprints could be generated from the selected nuggets.</p>
+        <p class="hint">Try selecting more nuggets — agents need at least a <strong>data access</strong> skill plus a <strong>domain logic</strong> or <strong>mutation</strong> skill.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

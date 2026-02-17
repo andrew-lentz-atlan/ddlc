@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Data Asset Request — DDLC</title>
+    <link rel="stylesheet" href="/static/ddlc.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>
+            <a href="/">DDLC</a>
+            <span class="subtitle">New Data Asset Request</span>
+        </h1>
+    </header>
+
+    <div class="container" style="max-width: 720px;">
+        <div class="card" style="margin-top: 8px;">
+            <div class="card-header">
+                <h2>Request a New Data Asset</h2>
+            </div>
+            <form id="requestForm" onsubmit="return DDLC.request.submit(event)">
+                <div class="form-group">
+                    <label for="title">Title *</label>
+                    <input type="text" id="title" name="title" required
+                           placeholder="e.g., Customer 360 Daily Snapshot">
+                </div>
+
+                <div class="form-group">
+                    <label for="description">What do you need? *</label>
+                    <textarea id="description" name="description" required
+                              placeholder="Describe the data asset you need and what it should contain..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="business_context">Business Context</label>
+                    <textarea id="business_context" name="business_context"
+                              placeholder="Why do you need this? What business problem does it solve?"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="target_use_case">Target Use Case</label>
+                    <textarea id="target_use_case" name="target_use_case"
+                              placeholder="How will this data asset be consumed? (dashboards, ML models, reports, etc.)"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="domain">Domain</label>
+                        <input type="text" id="domain" name="domain"
+                               placeholder="e.g., Finance, Marketing, Engineering">
+                    </div>
+                    <div class="form-group">
+                        <label for="data_product">Data Product</label>
+                        <input type="text" id="data_product" name="data_product"
+                               placeholder="e.g., Customer Analytics">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="urgency">Urgency</label>
+                    <select id="urgency" name="urgency">
+                        <option value="low">Low — Nice to have</option>
+                        <option value="medium" selected>Medium — Needed this quarter</option>
+                        <option value="high">High — Needed this sprint</option>
+                        <option value="critical">Critical — Blocking work</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="desired_fields">Desired Fields</label>
+                    <input type="text" id="desired_fields" name="desired_fields"
+                           placeholder="customer_id, email, total_spend, last_order_date">
+                    <div class="form-hint">Comma-separated list of columns/fields you think you need (optional)</div>
+                </div>
+
+                <hr style="border: none; border-top: 1px solid var(--border); margin: 24px 0;">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="requester_name">Your Name *</label>
+                        <input type="text" id="requester_name" name="requester_name" required
+                               placeholder="Jane Smith">
+                    </div>
+                    <div class="form-group">
+                        <label for="requester_email">Your Email *</label>
+                        <input type="email" id="requester_email" name="requester_email" required
+                               placeholder="jane@company.com">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
+                    <a href="/" class="btn">Cancel</a>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">Submit Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/ddlc.js"></script>
+</body>
+</html>

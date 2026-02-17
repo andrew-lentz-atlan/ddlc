@@ -1,0 +1,91 @@
+{
+  "semantic_view_blueprints": [
+    {
+      "id": "svb.finance_reporting",
+      "name": "Finance Reporting \u2013 Semantic View",
+      "purpose": "Provides the context an agent needs to perform reporting tasks in the Finance domain.",
+      "domains": [
+        "finance"
+      ],
+      "nugget_ids": [
+        "skill.join_finance_data",
+        "skill.exec_finance_style",
+        "skill.query_mdlh"
+      ],
+      "skill_nugget_ids": [
+        "skill.join_finance_data",
+        "skill.exec_finance_style",
+        "skill.query_mdlh"
+      ],
+      "evaluation_nugget_ids": []
+    },
+    {
+      "id": "svb.governance_pii_tagging",
+      "name": "Governance & Pii Tagging \u2013 Semantic View",
+      "purpose": "Provides the context an agent needs to perform tagging tasks across the Governance & Pii domains.",
+      "domains": [
+        "governance",
+        "pii"
+      ],
+      "nugget_ids": [
+        "skill.update_atlan_tags",
+        "skill.query_mdlh",
+        "eval.pii_edge_cases"
+      ],
+      "skill_nugget_ids": [
+        "skill.update_atlan_tags",
+        "skill.query_mdlh"
+      ],
+      "evaluation_nugget_ids": [
+        "eval.pii_edge_cases"
+      ]
+    }
+  ],
+  "agent_blueprints": [
+    {
+      "id": "agent.finance_reporting",
+      "name": "Finance Reporting Agent",
+      "description": "An agent that queries data via MDLH, applies Finance-specific logic, and produces formatted reports.",
+      "semantic_view_id": "svb.finance_reporting",
+      "agent_type": "reporting",
+      "expected_capabilities": [
+        "Query Atlan metadata and domain datasets via MDLH",
+        "Apply domain-specific joins and business logic",
+        "Generate formatted summaries and reports",
+        "Apply domain logic from: How to join finance data",
+        "Format output using: Executive financial reporting style"
+      ],
+      "evaluation_nugget_ids": []
+    },
+    {
+      "id": "agent.governance_pii_tagging",
+      "name": "Governance & Pii Tagging Agent",
+      "description": "An agent that performs tagging tasks across the Governance & Pii domains.",
+      "semantic_view_id": "svb.governance_pii_tagging",
+      "agent_type": "tagging",
+      "expected_capabilities": [
+        "Scan Atlan assets for classification candidates",
+        "Apply tags and metadata according to governance rules",
+        "Respect edge-case expectations from evaluation packs"
+      ],
+      "evaluation_nugget_ids": [
+        "eval.pii_edge_cases"
+      ]
+    }
+  ],
+  "metadata": {
+    "nuggets_analyzed": 5,
+    "skill_nuggets": 4,
+    "evaluation_nuggets": 1,
+    "domains_found": [
+      "comms",
+      "finance",
+      "governance",
+      "pii"
+    ],
+    "archetypes_checked": [
+      "reporting",
+      "tagging"
+    ]
+  }
+}
