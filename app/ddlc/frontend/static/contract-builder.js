@@ -12,6 +12,10 @@ const ContractApp = {
     _globalSearchTimer: null,
     _expandedQualityId: null,
     _expandedSLAId: null,
+    _expandedServerId: null,
+    _expandedRoleId: null,
+    _approverSearchTimer: null,
+    _pendingApprovers: {},
 
     STAGES: ['request', 'discovery', 'specification', 'review', 'approval', 'active'],
     STAGE_LABELS: {
@@ -288,6 +292,9 @@ const ContractApp = {
             ${this.renderSchemaSection()}
             ${this.renderQualitySection()}
             ${this.renderSLASection()}
+            ${this.renderServersSection()}
+            ${this.renderRolesSection()}
+            ${this.renderCustomPropertiesSection()}
             ${this.renderTeamSection()}
             ${this.renderComments()}
         `;
@@ -1802,6 +1809,22 @@ const ContractApp = {
     ],
     _SLA_SCHEDULERS: ['', 'airflow', 'cron', 'prefect', 'dagster'],
     _SLA_DRIVERS: ['', 'regulatory', 'analytics', 'operational', 'compliance'],
+    _SERVER_TYPES: [
+        { value: 'snowflake',  label: 'Snowflake' },
+        { value: 'bigquery',   label: 'BigQuery' },
+        { value: 'databricks', label: 'Databricks' },
+        { value: 'redshift',   label: 'Redshift' },
+        { value: 'postgres',   label: 'PostgreSQL' },
+        { value: 'other',      label: 'Other' },
+    ],
+    _SERVER_ENVS: ['prod', 'staging', 'dev', 'test'],
+    _SERVER_ENV_COLORS: { prod: '#ef4444', staging: '#f59e0b', dev: '#3b82f6', test: '#6b7280' },
+    _SERVER_ACCT_LABELS: { snowflake: 'Account', bigquery: 'Project ID', databricks: 'Workspace URL', redshift: 'Cluster Endpoint', postgres: 'Host', other: 'Account / Host' },
+    _ACCESS_LEVELS: [
+        { value: 'read',  label: 'Read',  color: '#3b82f6' },
+        { value: 'write', label: 'Write', color: '#f59e0b' },
+        { value: 'admin', label: 'Admin', color: '#ef4444' },
+    ],
 
     _getSchemaObjectNames() {
         return (this.session.contract.schema_objects || []).map(o => o.name);
@@ -2060,6 +2083,639 @@ const ContractApp = {
         }
     },
 
+    // --- Servers / Infrastructure section ---
+    renderServersSection() {
+        const servers = this.session.contract.servers || [];
+        const expandedId = this._expandedServerId;
+        return `
+            <div class="section-panel">
+                <div class="section-header">
+                    <h3>Infrastructure / Servers (${servers.length})</h3>
+                    <button class="btn btn-sm btn-primary" onclick="ContractApp.showAddServer()">+ Add Server</button>
+                </div>
+                <div class="section-body" id="serverBody">
+                    <div id="addServerForm"></div>
+                    ${servers.length === 0 ? '<div style="color:var(--text-dim); font-size:0.85rem; text-align:center; padding:12px;">No servers defined. Add at least one to specify where this asset will be materialized.</div>' : ''}
+                    ${servers.map(s => this.renderServerCard(s, expandedId === s.id)).join('')}
+                </div>
+            </div>
+        `;
+    },
+
+    renderServerCard(s, isExpanded) {
+        const typeLabel = (this._SERVER_TYPES.find(t => t.value === s.type) || {}).label || s.type;
+        const envColor = this._SERVER_ENV_COLORS[s.environment] || 'var(--text-dim)';
+        const connSummary = [s.database, s.schema_name].filter(Boolean).join('.');
+        return `
+            <div class="server-card ${isExpanded ? 'expanded' : ''}">
+                <div class="server-card-header" onclick="ContractApp.toggleServerCard('${s.id}')">
+                    <div class="server-card-type">${this.esc(typeLabel)}</div>
+                    <span class="col-badge server-card-env" style="background:${envColor}22; color:${envColor};">${this.esc(s.environment)}</span>
+                    ${connSummary ? `<span style="font-size:0.82rem; font-family:var(--font-mono); color:var(--text-muted);">${this.esc(connSummary)}</span>` : ''}
+                    <div class="server-card-desc">${s.description ? this.esc(s.description) : ''}</div>
+                    <div class="server-card-meta">
+                        ${s.account ? `<span class="server-meta-tag">&#127968; ${this.esc(s.account)}</span>` : ''}
+                        ${s.host ? `<span class="server-meta-tag">&#128279; ${this.esc(s.host)}</span>` : ''}
+                    </div>
+                    <div class="server-card-actions">
+                        <button class="btn-icon" onclick="event.stopPropagation(); ContractApp.deleteServer('${s.id}')">&#128465;</button>
+                    </div>
+                </div>
+                ${isExpanded ? `<div class="server-edit-body">${this.renderServerEditForm(s)}</div>` : ''}
+            </div>
+        `;
+    },
+
+    renderServerEditForm(s) {
+        const acctLabel = this._SERVER_ACCT_LABELS[s.type] || 'Account';
+        const typeOpts = this._SERVER_TYPES.map(t =>
+            `<option value="${t.value}" ${s.type === t.value ? 'selected' : ''}>${t.label}</option>`
+        ).join('');
+        const envOpts = this._SERVER_ENVS.map(e =>
+            `<option value="${e}" ${s.environment === e ? 'selected' : ''}>${e}</option>`
+        ).join('');
+        const connQn = s.connection_qualified_name || '';
+        const connDisplay = connQn ? connQn.split('/').slice(0, 3).join('/') : '';
+        return `
+            <div class="inline-form-row">
+                <div>
+                    <label>Type</label>
+                    <select id="editSrv_type_${s.id}" onchange="ContractApp.onServerTypeChange('${s.id}')">${typeOpts}</select>
+                </div>
+                <div>
+                    <label>Environment</label>
+                    <select id="editSrv_env_${s.id}">${envOpts}</select>
+                </div>
+            </div>
+            ${this.atlanConfigured ? `
+            <div style="position:relative; margin-bottom:8px;">
+                <label>Atlan Connection</label>
+                <input id="editSrv_conn_search_${s.id}" autocomplete="off"
+                       value="${this.esc(connDisplay)}"
+                       placeholder="Search Atlan connections…"
+                       oninput="ContractApp.onConnectionSearch('${s.id}', 'edit')"
+                       onblur="setTimeout(()=>ContractApp.hideConnectionDropdown('${s.id}', 'edit'), 200)"
+                       style="width:100%;">
+                <div id="connDropdown_edit_${s.id}"
+                     style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1500;
+                            background:var(--bg-card); border:1px solid var(--border-focus);
+                            border-radius:var(--radius); max-height:180px; overflow-y:auto;
+                            box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                <input type="hidden" id="editSrv_conn_qn_${s.id}" value="${this.esc(connQn)}">
+            </div>` : ''}
+            <div class="inline-form-row">
+                <div>
+                    <label id="editSrv_acctLabel_${s.id}">${acctLabel}</label>
+                    <input id="editSrv_account_${s.id}" value="${this.esc(s.account || '')}" placeholder="e.g. myorg.us-east-1">
+                </div>
+                <div>
+                    <label>Host / URL</label>
+                    <input id="editSrv_host_${s.id}" value="${this.esc(s.host || '')}" placeholder="e.g. abc123.snowflakecomputing.com">
+                </div>
+            </div>
+            <div class="inline-form-row">
+                <div>
+                    <label>Database</label>
+                    <input id="editSrv_database_${s.id}" value="${this.esc(s.database || '')}" placeholder="e.g. ANALYTICS_DB">
+                </div>
+                <div>
+                    <label>Schema</label>
+                    <input id="editSrv_schema_${s.id}" value="${this.esc(s.schema_name || '')}" placeholder="e.g. MARTS">
+                </div>
+            </div>
+            <div>
+                <label>Description</label>
+                <textarea id="editSrv_desc_${s.id}" rows="2" placeholder="Notes about this connection...">${this.esc(s.description || '')}</textarea>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-sm" onclick="ContractApp.toggleServerCard('${s.id}')">Cancel</button>
+                <button class="btn btn-sm btn-primary" onclick="ContractApp.saveServerEdits('${s.id}')">Save Changes</button>
+            </div>
+        `;
+    },
+
+    onServerTypeChange(serverId) {
+        const type = document.getElementById(`editSrv_type_${serverId}`)?.value;
+        const labelEl = document.getElementById(`editSrv_acctLabel_${serverId}`);
+        if (labelEl) labelEl.textContent = this._SERVER_ACCT_LABELS[type] || 'Account';
+    },
+
+    toggleServerCard(serverId) {
+        this._expandedServerId = (this._expandedServerId === serverId) ? null : serverId;
+        this.renderMain();
+    },
+
+    async saveServerEdits(serverId) {
+        const get = (field) => document.getElementById(`editSrv_${field}_${serverId}`)?.value.trim() || '';
+        try {
+            await DDLC.api.put(`/api/sessions/${this.sessionId}/contract/servers/${serverId}`, {
+                type: get('type') || 'snowflake',
+                environment: get('env') || 'prod',
+                account: get('account') || null,
+                host: get('host') || null,
+                database: get('database') || null,
+                schema_name: get('schema') || null,
+                description: get('desc') || null,
+                connection_qualified_name: get('conn_qn') || null,
+            });
+            DDLC.toast.show('Server updated');
+            this._expandedServerId = null;
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    showAddServer() {
+        const el = document.getElementById('addServerForm');
+        if (!el) return;
+        const typeOpts = this._SERVER_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
+        const envOpts = this._SERVER_ENVS.map(e => `<option value="${e}">${e}</option>`).join('');
+        const connPickerHtml = this.atlanConfigured ? `
+            <div style="position:relative; margin-bottom:8px;">
+                <label>Atlan Connection</label>
+                <input id="addSrvConnSearch" autocomplete="off"
+                       placeholder="Search Atlan connections…"
+                       oninput="ContractApp.onConnectionSearch('add', 'add')"
+                       onblur="setTimeout(()=>ContractApp.hideConnectionDropdown('add', 'add'), 200)"
+                       style="width:100%;">
+                <div id="connDropdown_add_add"
+                     style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1500;
+                            background:var(--bg-card); border:1px solid var(--border-focus);
+                            border-radius:var(--radius); max-height:180px; overflow-y:auto;
+                            box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                <input type="hidden" id="addSrvConnQn" value="">
+            </div>` : '';
+        el.innerHTML = `
+            <div class="section-inline-form" style="margin-bottom:12px;">
+                <div class="inline-form-row">
+                    <div>
+                        <label>Type</label>
+                        <select id="addSrvType" onchange="ContractApp.onAddServerTypeChange()">${typeOpts}</select>
+                    </div>
+                    <div>
+                        <label>Environment</label>
+                        <select id="addSrvEnv">${envOpts}</select>
+                    </div>
+                </div>
+                ${connPickerHtml}
+                <div class="inline-form-row">
+                    <div>
+                        <label id="addSrvAcctLabel">Account</label>
+                        <input id="addSrvAccount" placeholder="e.g. myorg.us-east-1">
+                    </div>
+                    <div>
+                        <label>Host / URL</label>
+                        <input id="addSrvHost" placeholder="e.g. abc123.snowflakecomputing.com">
+                    </div>
+                </div>
+                <div class="inline-form-row">
+                    <div>
+                        <label>Database</label>
+                        <input id="addSrvDatabase" placeholder="e.g. ANALYTICS_DB">
+                    </div>
+                    <div>
+                        <label>Schema</label>
+                        <input id="addSrvSchema" placeholder="e.g. MARTS">
+                    </div>
+                </div>
+                <div>
+                    <label>Description</label>
+                    <textarea id="addSrvDesc" rows="2" placeholder="Notes about this connection..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-sm" onclick="document.getElementById('addServerForm').innerHTML=''">Cancel</button>
+                    <button class="btn btn-sm btn-primary" onclick="ContractApp.addServer()">Add Server</button>
+                </div>
+            </div>
+        `;
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+
+    onAddServerTypeChange() {
+        const type = document.getElementById('addSrvType')?.value;
+        const labelEl = document.getElementById('addSrvAcctLabel');
+        if (labelEl) labelEl.textContent = this._SERVER_ACCT_LABELS[type] || 'Account';
+    },
+
+    async addServer() {
+        const type = document.getElementById('addSrvType')?.value || 'snowflake';
+        const environment = document.getElementById('addSrvEnv')?.value || 'prod';
+        try {
+            await DDLC.api.post(`/api/sessions/${this.sessionId}/contract/servers`, {
+                type,
+                environment,
+                account: document.getElementById('addSrvAccount')?.value.trim() || null,
+                host: document.getElementById('addSrvHost')?.value.trim() || null,
+                database: document.getElementById('addSrvDatabase')?.value.trim() || null,
+                schema_name: document.getElementById('addSrvSchema')?.value.trim() || null,
+                description: document.getElementById('addSrvDesc')?.value.trim() || null,
+                connection_qualified_name: document.getElementById('addSrvConnQn')?.value.trim() || null,
+            });
+            DDLC.toast.show('Server added');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async deleteServer(serverId) {
+        try {
+            await DDLC.api.del(`/api/sessions/${this.sessionId}/contract/servers/${serverId}`);
+            DDLC.toast.show('Server deleted');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    // --- Connection picker helpers ---
+    _connSearchTimer: null,
+
+    onConnectionSearch(serverId, mode) {
+        clearTimeout(this._connSearchTimer);
+        this._connSearchTimer = setTimeout(async () => {
+            const inputId = mode === 'add' ? 'addSrvConnSearch' : `editSrv_conn_search_${serverId}`;
+            const q = (document.getElementById(inputId)?.value || '').trim();
+            try {
+                const url = `/api/atlan/search-connections?q=${encodeURIComponent(q)}&limit=15`;
+                const data = await DDLC.api.fetchJSON(url);
+                this.renderConnectionDropdown(serverId, mode, data.connections || []);
+            } catch (err) {
+                console.warn('Connection search failed:', err.message);
+            }
+        }, 300);
+    },
+
+    renderConnectionDropdown(serverId, mode, connections) {
+        const ddId = `connDropdown_${mode}_${serverId}`;
+        const dd = document.getElementById(ddId);
+        if (!dd) return;
+        if (!connections.length) { dd.style.display = 'none'; return; }
+        dd.innerHTML = connections.map(c => {
+            const payload = JSON.stringify(c).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem;
+                               border-bottom:1px solid var(--border); transition:background 0.15s;"
+                         onmousedown="ContractApp.selectConnection('${serverId}', '${mode}', JSON.parse('${payload.replace(/"/g, '&quot;')}'))"
+                         onmouseover="this.style.background='var(--bg-input)'"
+                         onmouseout="this.style.background=''">
+                <div style="font-weight:600; color:var(--text);">${this.esc(c.name)}</div>
+                <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${this.esc(c.connector_name || '')}</div>
+                <div style="font-size:0.7rem; color:var(--text-dim); font-family:var(--font-mono); margin-top:2px;">${this.esc(c.qualified_name || '')}</div>
+            </div>`;
+        }).join('');
+        dd.style.display = 'block';
+    },
+
+    selectConnection(serverId, mode, conn) {
+        if (mode === 'add') {
+            const si = document.getElementById('addSrvConnSearch');
+            const hi = document.getElementById('addSrvConnQn');
+            if (si) si.value = conn.name || '';
+            if (hi) hi.value = conn.qualified_name || '';
+        } else {
+            const si = document.getElementById(`editSrv_conn_search_${serverId}`);
+            const hi = document.getElementById(`editSrv_conn_qn_${serverId}`);
+            if (si) si.value = conn.name || '';
+            if (hi) hi.value = conn.qualified_name || '';
+        }
+        this.hideConnectionDropdown(serverId, mode);
+    },
+
+    hideConnectionDropdown(serverId, mode) {
+        const dd = document.getElementById(`connDropdown_${mode}_${serverId}`);
+        if (dd) dd.style.display = 'none';
+    },
+
+    // --- Roles & Access Control section ---
+
+    renderRolesSection() {
+        const roles = this.session.contract.roles || [];
+        const expandedId = this._expandedRoleId;
+        return `
+            <div class="section-panel">
+                <div class="section-header">
+                    <h3>Roles & Access Control (${roles.length})</h3>
+                    <button class="btn btn-sm btn-primary" onclick="ContractApp.showAddRole()">+ Add Role</button>
+                </div>
+                <div class="section-body" id="roleBody">
+                    <div id="addRoleForm"></div>
+                    ${roles.length === 0
+                        ? '<div style="color:var(--text-dim); font-size:0.85rem; text-align:center; padding:12px;">No roles defined. Add roles to specify who can access this asset.</div>'
+                        : ''}
+                    ${roles.map(r => this.renderRoleCard(r, expandedId === r.id)).join('')}
+                </div>
+            </div>
+        `;
+    },
+
+    renderRoleCard(r, isExpanded) {
+        const accessInfo = this._ACCESS_LEVELS.find(a => a.value === r.access) || { label: r.access, color: 'var(--text-dim)' };
+        const approvers = r.approvers || [];
+        return `
+            <div class="role-card ${isExpanded ? 'expanded' : ''}">
+                <div class="role-card-header" onclick="ContractApp.toggleRoleCard('${r.id}')">
+                    <div class="role-card-name">${this.esc(r.role)}</div>
+                    <span class="col-badge role-card-access"
+                        style="background:${accessInfo.color}22; color:${accessInfo.color};">
+                        ${accessInfo.label}
+                    </span>
+                    <div class="role-card-desc">${r.description ? this.esc(r.description) : ''}</div>
+                    <div class="role-card-meta">
+                        ${approvers.slice(0, 3).map(a =>
+                            `<span class="role-meta-tag">👤 ${this.esc(a.display_name || a.email)}</span>`
+                        ).join('')}
+                        ${approvers.length > 3 ? `<span class="role-meta-tag">+${approvers.length - 3} more</span>` : ''}
+                    </div>
+                    <div class="role-card-actions">
+                        <button class="btn-icon" onclick="event.stopPropagation(); ContractApp.deleteRole('${r.id}')">&#128465;</button>
+                    </div>
+                </div>
+                ${isExpanded ? `<div class="role-edit-body">${this.renderRoleEditForm(r)}</div>` : ''}
+            </div>
+        `;
+    },
+
+    renderRoleEditForm(r) {
+        const accessOpts = this._ACCESS_LEVELS.map(a =>
+            `<option value="${a.value}" ${r.access === a.value ? 'selected' : ''}>${a.label}</option>`
+        ).join('');
+        if (!this._pendingApprovers[r.id]) {
+            this._pendingApprovers[r.id] = [...(r.approvers || [])];
+        }
+        const pending = this._pendingApprovers[r.id];
+        const approverTagsHtml = pending.map(a => `
+            <span class="approver-tag" data-guid="${this.esc(a.guid || '')}" data-email="${this.esc(a.email || '')}">
+                ${this.esc(a.display_name || a.email)}
+                <button onclick="ContractApp.removeApprover('${r.id}', '${this.esc(a.guid || a.email)}')" type="button">×</button>
+            </span>
+        `).join('');
+        return `
+            <div class="inline-form-row">
+                <div><label>Role Name</label>
+                    <input id="editRole_name_${r.id}" value="${this.esc(r.role)}" placeholder="e.g. Data Consumer"></div>
+                <div><label>Access Level</label>
+                    <select id="editRole_access_${r.id}">${accessOpts}</select></div>
+            </div>
+            <div>
+                <label>Approvers (Atlan users)</label>
+                <div class="approver-picker">
+                    <input class="approver-picker-input" id="approverSearch_${r.id}"
+                        placeholder="${this.atlanConfigured ? 'Search Atlan users by name or email…' : 'Enter email address and press Enter'}"
+                        oninput="ContractApp.onApproverSearch('${r.id}')"
+                        onkeydown="ContractApp.onApproverKeydown(event, '${r.id}')"
+                        onblur="setTimeout(()=>{const d=document.getElementById('approverDropdown_${r.id}');if(d)d.style.display='none';},200)">
+                    <div class="approver-dropdown" id="approverDropdown_${r.id}" style="display:none;"></div>
+                </div>
+                <div class="approver-tags" id="approverTags_${r.id}">${approverTagsHtml}</div>
+            </div>
+            <div><label>Description</label>
+                <textarea id="editRole_desc_${r.id}" rows="2" placeholder="Who uses this role and for what purpose...">${this.esc(r.description || '')}</textarea></div>
+            <div class="form-actions">
+                <button class="btn btn-sm" onclick="ContractApp.toggleRoleCard('${r.id}')">Cancel</button>
+                <button class="btn btn-sm btn-primary" onclick="ContractApp.saveRoleEdits('${r.id}')">Save Changes</button>
+            </div>
+        `;
+    },
+
+    onApproverSearch(roleId) {
+        clearTimeout(this._approverSearchTimer);
+        const q = document.getElementById(`approverSearch_${roleId}`)?.value.trim();
+        if (!q || !this.atlanConfigured) return;
+        this._approverSearchTimer = setTimeout(async () => {
+            try {
+                const data = await DDLC.api.fetchJSON(`/api/atlan/search-users?q=${encodeURIComponent(q)}&limit=10`);
+                this.renderApproverDropdown(roleId, data.users || []);
+            } catch (err) { console.warn('Approver search failed:', err.message); }
+        }, 300);
+    },
+
+    onApproverKeydown(event, roleId) {
+        if (event.key === 'Enter' && !this.atlanConfigured) {
+            event.preventDefault();
+            const email = event.target.value.trim();
+            if (email) {
+                this.addApproverToForm(roleId, { username: email, email, guid: '', display_name: email });
+                event.target.value = '';
+            }
+        }
+        if (event.key === 'Escape') {
+            const dd = document.getElementById(`approverDropdown_${roleId}`);
+            if (dd) dd.style.display = 'none';
+        }
+    },
+
+    renderApproverDropdown(roleId, users) {
+        const dropdown = document.getElementById(`approverDropdown_${roleId}`);
+        if (!dropdown) return;
+        if (!users.length) { dropdown.style.display = 'none'; return; }
+        dropdown.innerHTML = users.map(u => {
+            const userJson = JSON.stringify(u).replace(/'/g, '&#39;');
+            return `<div class="approver-option" onclick="ContractApp.selectApprover('${roleId}', '${userJson.replace(/"/g, '&quot;')}')">
+                <span class="approver-option-name">${this.esc(u.display_name || u.username)}</span>
+                <span class="approver-option-email">${this.esc(u.email)}</span>
+            </div>`;
+        }).join('');
+        dropdown.style.display = 'block';
+    },
+
+    selectApprover(roleId, userJson) {
+        try {
+            const user = JSON.parse(userJson.replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
+            this.addApproverToForm(roleId, user);
+        } catch (e) { /* ignore parse errors */ }
+        const input = document.getElementById(`approverSearch_${roleId}`);
+        if (input) input.value = '';
+        const dd = document.getElementById(`approverDropdown_${roleId}`);
+        if (dd) dd.style.display = 'none';
+    },
+
+    addApproverToForm(roleId, user) {
+        if (!this._pendingApprovers[roleId]) this._pendingApprovers[roleId] = [];
+        const existing = this._pendingApprovers[roleId];
+        if (existing.some(a => a.email === user.email)) return;
+        existing.push(user);
+        const container = document.getElementById(`approverTags_${roleId}`);
+        if (container) {
+            const tag = document.createElement('span');
+            tag.className = 'approver-tag';
+            tag.dataset.guid = user.guid || '';
+            tag.dataset.email = user.email || '';
+            const identifier = user.guid || user.email;
+            tag.innerHTML = `${this.esc(user.display_name || user.email)}<button onclick="ContractApp.removeApprover('${roleId}', '${identifier.replace(/'/g, "\\'")}')">×</button>`;
+            container.appendChild(tag);
+        }
+    },
+
+    removeApprover(roleId, identifier) {
+        if (!this._pendingApprovers[roleId]) return;
+        this._pendingApprovers[roleId] = this._pendingApprovers[roleId]
+            .filter(a => a.guid !== identifier && a.email !== identifier);
+        const container = document.getElementById(`approverTags_${roleId}`);
+        if (container) {
+            container.querySelectorAll('.approver-tag').forEach(tag => {
+                if (tag.dataset.guid === identifier || tag.dataset.email === identifier) {
+                    tag.remove();
+                }
+            });
+        }
+    },
+
+    toggleRoleCard(roleId) {
+        if (this._expandedRoleId === roleId) {
+            this._expandedRoleId = null;
+            delete this._pendingApprovers[roleId];
+        } else {
+            this._expandedRoleId = roleId;
+        }
+        this.renderMain();
+    },
+
+    async saveRoleEdits(roleId) {
+        const name = document.getElementById(`editRole_name_${roleId}`)?.value.trim();
+        if (!name) { DDLC.toast.show('Role name is required', 'error'); return; }
+        const approvers = this._pendingApprovers[roleId] || [];
+        try {
+            await DDLC.api.put(`/api/sessions/${this.sessionId}/contract/roles/${roleId}`, {
+                role: name,
+                access: document.getElementById(`editRole_access_${roleId}`)?.value || 'read',
+                approvers,
+                description: document.getElementById(`editRole_desc_${roleId}`)?.value.trim() || null,
+            });
+            delete this._pendingApprovers[roleId];
+            DDLC.toast.show('Role updated');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    showAddRole() {
+        const accessOpts = this._ACCESS_LEVELS.map(a =>
+            `<option value="${a.value}">${a.label}</option>`
+        ).join('');
+        if (!this._pendingApprovers['_new']) this._pendingApprovers['_new'] = [];
+        const form = document.getElementById('addRoleForm');
+        if (!form) return;
+        form.innerHTML = `
+            <div class="role-edit-body" style="margin-bottom:12px; border:1px solid var(--border); border-radius:var(--radius);">
+                <div class="inline-form-row">
+                    <div><label>Role Name</label>
+                        <input id="newRole_name" placeholder="e.g. Data Consumer"></div>
+                    <div><label>Access Level</label>
+                        <select id="newRole_access">${accessOpts}</select></div>
+                </div>
+                <div>
+                    <label>Approvers (Atlan users)</label>
+                    <div class="approver-picker">
+                        <input class="approver-picker-input" id="approverSearch__new"
+                            placeholder="${this.atlanConfigured ? 'Search Atlan users…' : 'Enter email and press Enter'}"
+                            oninput="ContractApp.onApproverSearch('_new')"
+                            onkeydown="ContractApp.onApproverKeydown(event, '_new')"
+                            onblur="setTimeout(()=>{const d=document.getElementById('approverDropdown__new');if(d)d.style.display='none';},200)">
+                        <div class="approver-dropdown" id="approverDropdown__new" style="display:none;"></div>
+                    </div>
+                    <div class="approver-tags" id="approverTags__new"></div>
+                </div>
+                <div><label>Description (optional)</label>
+                    <textarea id="newRole_desc" rows="2" placeholder="Who uses this role..."></textarea></div>
+                <div class="form-actions">
+                    <button class="btn btn-sm" onclick="document.getElementById('addRoleForm').innerHTML=''; delete ContractApp._pendingApprovers['_new'];">Cancel</button>
+                    <button class="btn btn-sm btn-primary" onclick="ContractApp.addRole()">Add Role</button>
+                </div>
+            </div>
+        `;
+    },
+
+    async addRole() {
+        const name = document.getElementById('newRole_name')?.value.trim();
+        if (!name) { DDLC.toast.show('Role name is required', 'error'); return; }
+        const approvers = this._pendingApprovers['_new'] || [];
+        try {
+            await DDLC.api.post(`/api/sessions/${this.sessionId}/contract/roles`, {
+                role: name,
+                access: document.getElementById('newRole_access')?.value || 'read',
+                approvers,
+                description: document.getElementById('newRole_desc')?.value.trim() || null,
+            });
+            delete this._pendingApprovers['_new'];
+            DDLC.toast.show('Role added');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async deleteRole(roleId) {
+        try {
+            await DDLC.api.del(`/api/sessions/${this.sessionId}/contract/roles/${roleId}`);
+            DDLC.toast.show('Role removed');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    // --- Custom Properties section ---
+
+    renderCustomPropertiesSection() {
+        const props = this.session.contract.custom_properties || [];
+        return `
+            <div class="section-panel">
+                <div class="section-header">
+                    <h3>Custom Properties (${props.length})</h3>
+                </div>
+                <div class="section-body">
+                    ${props.length === 0
+                        ? '<div style="color:var(--text-dim); font-size:0.85rem; padding:4px 0 8px;">No custom properties yet.</div>'
+                        : ''}
+                    ${props.map(p => `
+                        <div class="customprop-row">
+                            <span class="customprop-key">${this.esc(p.key)}</span>
+                            <span class="customprop-sep">:</span>
+                            <span class="customprop-value">${this.esc(p.value)}</span>
+                            <button class="btn-icon" style="margin-left:auto;" onclick="ContractApp.deleteCustomProperty('${p.id}')">&#128465;</button>
+                        </div>
+                    `).join('')}
+                    <div style="display:flex; gap:8px; margin-top:8px; align-items:flex-end;">
+                        <div style="flex:1;">
+                            <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:4px;">Key</div>
+                            <input id="newCustomProp_key" style="width:100%; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:var(--font-mono); font-size:0.82rem;" placeholder="cost_center">
+                        </div>
+                        <div style="flex:2;">
+                            <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:4px;">Value</div>
+                            <input id="newCustomProp_value" style="width:100%; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:var(--font-mono); font-size:0.82rem;" placeholder="eng-platform">
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="ContractApp.addCustomProperty()" style="flex-shrink:0;">+ Add</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    async addCustomProperty() {
+        const key = document.getElementById('newCustomProp_key')?.value.trim();
+        const value = document.getElementById('newCustomProp_value')?.value.trim();
+        if (!key || !value) { DDLC.toast.show('Key and value are required', 'error'); return; }
+        try {
+            await DDLC.api.post(`/api/sessions/${this.sessionId}/contract/custom-properties`, { key, value });
+            DDLC.toast.show('Custom property added');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async deleteCustomProperty(propId) {
+        try {
+            await DDLC.api.del(`/api/sessions/${this.sessionId}/contract/custom-properties/${propId}`);
+            DDLC.toast.show('Property removed');
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
     // --- Team section ---
     renderTeamSection() {
         const team = this.session.contract.team || [];
@@ -2151,6 +2807,9 @@ const ContractApp = {
         const objects = c.schema_objects || [];
         const quality = c.quality_checks || [];
         const slas = c.sla_properties || [];
+        const servers = c.servers || [];
+        const roles = c.roles || [];
+        const customProps = c.custom_properties || [];
 
         let schemaHtml = objects.map(obj => {
             const props = obj.properties || [];
@@ -2229,6 +2888,45 @@ const ContractApp = {
                             </div>`;
                         }).join('')}
                     ` : ''}
+                    ${servers.length > 0 ? `
+                        <h4 style="font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; margin:16px 0 8px;">Infrastructure</h4>
+                        ${servers.map(s => {
+                            const typeLabel = (this._SERVER_TYPES.find(t => t.value === s.type) || {}).label || s.type;
+                            const envColor = this._SERVER_ENV_COLORS[s.environment] || 'var(--text-dim)';
+                            const connSummary = [s.database, s.schema_name].filter(Boolean).join('.');
+                            return `<div style="padding:6px 0; font-size:0.82rem; border-bottom:1px solid var(--border);">
+                                <span class="col-badge" style="background:${envColor}22; color:${envColor};">${this.esc(s.environment)}</span>
+                                <strong>${this.esc(typeLabel)}</strong>
+                                ${connSummary ? `<span style="font-family:var(--font-mono); margin-left:6px; color:var(--text-muted);">${this.esc(connSummary)}</span>` : ''}
+                                ${s.account ? `<span style="margin-left:8px; font-size:0.72rem; color:var(--text-dim);">&#127968; ${this.esc(s.account)}</span>` : ''}
+                                ${s.host ? `<span style="margin-left:8px; font-size:0.72rem; color:var(--text-dim);">&#128279; ${this.esc(s.host)}</span>` : ''}
+                                ${s.description ? `<div style="margin-top:2px; font-size:0.75rem; color:var(--text-muted);">${this.esc(s.description)}</div>` : ''}
+                            </div>`;
+                        }).join('')}
+                    ` : ''}
+                    ${roles.length > 0 ? `
+                        <h4 style="font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; margin:16px 0 8px;">Roles & Access</h4>
+                        ${roles.map(r => {
+                            const accessInfo = this._ACCESS_LEVELS.find(a => a.value === r.access) || { label: r.access, color: 'var(--text-dim)' };
+                            const approvers = r.approvers || [];
+                            return `<div style="padding:6px 0; font-size:0.82rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span class="col-badge" style="background:${accessInfo.color}22; color:${accessInfo.color};">${accessInfo.label}</span>
+                                <strong>${this.esc(r.role)}</strong>
+                                ${approvers.length > 0 ? `<span style="font-size:0.72rem; color:var(--text-dim);">${approvers.map(a => this.esc(a.display_name || a.email)).join(', ')}</span>` : ''}
+                                ${r.description ? `<span style="font-size:0.75rem; color:var(--text-muted); flex-basis:100%; padding-left:4px;">${this.esc(r.description)}</span>` : ''}
+                            </div>`;
+                        }).join('')}
+                    ` : ''}
+                    ${customProps.length > 0 ? `
+                        <h4 style="font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; margin:16px 0 8px;">Custom Properties</h4>
+                        ${customProps.map(p => `
+                            <div style="display:flex; gap:8px; padding:4px 0; font-size:0.82rem; font-family:var(--font-mono);">
+                                <span style="color:var(--accent); font-weight:600; min-width:120px; flex-shrink:0;">${this.esc(p.key)}</span>
+                                <span style="color:var(--text-dim);">:</span>
+                                <span style="color:var(--text);">${this.esc(p.value)}</span>
+                            </div>
+                        `).join('')}
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -2256,6 +2954,21 @@ const ContractApp = {
 
     // --- Active stage ---
     renderActiveStage() {
+        const contract = this.session?.contract || {};
+        const atlanUrl = contract.atlan_table_url || null;
+        const atlanQn = contract.atlan_table_qualified_name || null;
+        const atlanBlock = atlanUrl ? `
+            <div style="margin-top:16px; padding:12px 16px; background:var(--bg-input);
+                        border:1px solid var(--border); border-radius:var(--radius);">
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em;">
+                    Registered Atlan Asset
+                </div>
+                ${atlanQn ? `<div style="font-size:0.78rem; font-family:var(--font-mono); color:var(--text-dim); margin-bottom:8px;">${this.esc(atlanQn)}</div>` : ''}
+                <a href="${this.esc(atlanUrl)}" target="_blank" rel="noopener"
+                   class="btn btn-primary btn-sm" style="text-decoration:none;">
+                    View in Atlan &rarr;
+                </a>
+            </div>` : '';
         return `
             <div class="section-panel" style="border-color: var(--success);">
                 <div class="section-body">
@@ -2267,6 +2980,7 @@ const ContractApp = {
                             <button class="btn btn-primary" onclick="ContractApp.showYamlPanel()">View YAML</button>
                             <button class="btn btn-success" onclick="ContractApp.downloadYaml()">Download .odcs.yaml</button>
                         </div>
+                        ${atlanBlock}
                     </div>
                 </div>
             </div>
@@ -2678,11 +3392,17 @@ const ContractApp = {
     // -----------------------------------------------------------------------
     async advanceStage(targetStage) {
         try {
-            await DDLC.api.put(`/api/sessions/${this.sessionId}/stage`, {
+            const result = await DDLC.api.put(`/api/sessions/${this.sessionId}/stage`, {
                 target_stage: targetStage,
             });
-            DDLC.toast.show(`Moved to ${targetStage}`);
             await this.load();
+            if (targetStage === 'active' && result?.atlan_url) {
+                DDLC.toast.show('Contract approved — asset registered in Atlan!', 'success');
+            } else if (targetStage === 'active' && result?.atlan_warning) {
+                DDLC.toast.show(result.atlan_warning, 'error');
+            } else {
+                DDLC.toast.show(`Moved to ${targetStage}`);
+            }
         } catch (err) {
             DDLC.toast.show(err.message, 'error');
         }

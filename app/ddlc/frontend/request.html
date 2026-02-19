@@ -51,9 +51,20 @@
                                placeholder="e.g., Finance, Marketing, Engineering">
                     </div>
                     <div class="form-group">
-                        <label for="data_product">Data Product</label>
-                        <input type="text" id="data_product" name="data_product"
-                               placeholder="e.g., Customer Analytics">
+                        <label for="data_product_search">Data Product</label>
+                        <div style="position:relative;">
+                            <input type="text" id="data_product_search" autocomplete="off"
+                                   placeholder="Search Atlan data products…"
+                                   oninput="DDLC.request.onDataProductSearch()"
+                                   onblur="setTimeout(()=>DDLC.request.hideDataProductDropdown(), 200)">
+                            <div id="dataProductDropdown"
+                                 style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1500;
+                                        background:var(--bg-card); border:1px solid var(--border-focus);
+                                        border-radius:var(--radius); max-height:200px; overflow-y:auto;
+                                        box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                        </div>
+                        <input type="hidden" id="data_product" name="data_product">
+                        <input type="hidden" id="data_product_qualified_name" name="data_product_qualified_name">
                     </div>
                 </div>
 
@@ -100,5 +111,6 @@
     <div class="toast" id="toast"></div>
 
     <script src="/static/ddlc.js"></script>
+    <script>DDLC.request.init();</script>
 </body>
 </html>

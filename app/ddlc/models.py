@@ -116,6 +116,25 @@ class Classification(str, Enum):
     SENSITIVE = "sensitive"
 
 
+class ServerType(str, Enum):
+    """ODCS server types — where the target asset will be materialized."""
+
+    SNOWFLAKE = "snowflake"
+    BIGQUERY = "bigquery"
+    DATABRICKS = "databricks"
+    REDSHIFT = "redshift"
+    POSTGRES = "postgres"
+    OTHER = "other"
+
+
+class AccessLevel(str, Enum):
+    """ODCS role access levels."""
+
+    READ = "read"
+    WRITE = "write"
+    ADMIN = "admin"
+
+
 # ---------------------------------------------------------------------------
 # Participant / team
 # ---------------------------------------------------------------------------
@@ -132,6 +151,47 @@ class TeamMember(BaseModel):
     name: str
     email: str
     role: str
+
+
+class Server(BaseModel):
+    """An ODCS server entry — connection target for the contract asset."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    type: ServerType = ServerType.SNOWFLAKE       # snowflake, bigquery, databricks, etc.
+    environment: str = "prod"                      # prod, dev, staging, test
+    account: Optional[str] = None                  # Snowflake account / GCP project / workspace URL
+    database: Optional[str] = None                 # Target database name
+    schema_name: Optional[str] = None              # Target schema/dataset name
+    host: Optional[str] = None                     # Host/URL (Databricks workspace, Redshift endpoint)
+    description: Optional[str] = None             # Human-readable notes
+    connection_qualified_name: Optional[str] = None  # e.g. default/snowflake/1770327201 — set via Atlan connection picker
+
+
+class RoleApprover(BaseModel):
+    """An Atlan user selected as a role approver."""
+
+    username: str
+    email: str
+    guid: Optional[str] = None          # Atlan user GUID — used in Phase 6 for asset ownership assignment
+    display_name: Optional[str] = None  # "First Last" for display
+
+
+class ContractRole(BaseModel):
+    """An ODCS role entry — who has access and at what level."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    role: str                                                    # Role name: "Data Consumer", etc.
+    access: AccessLevel = AccessLevel.READ                       # read, write, admin
+    approvers: List[RoleApprover] = Field(default_factory=list)  # Atlan users
+    description: Optional[str] = None
+
+
+class CustomProperty(BaseModel):
+    """A key-value custom metadata entry (ODCS customProperties)."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    key: str
+    value: str
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +303,7 @@ class ODCSContract(BaseModel):
     domain: Optional[str] = None
     tenant: Optional[str] = None
     data_product: Optional[str] = None
+    data_product_qualified_name: Optional[str] = None  # Atlan Data Product qualified_name
     description_purpose: Optional[str] = None
     description_limitations: Optional[str] = None
     description_usage: Optional[str] = None
@@ -251,6 +312,13 @@ class ODCSContract(BaseModel):
     quality_checks: List[QualityCheck] = Field(default_factory=list)
     sla_properties: List[SLAProperty] = Field(default_factory=list)
     team: List[TeamMember] = Field(default_factory=list)
+    servers: List[Server] = Field(default_factory=list)
+    roles: List[ContractRole] = Field(default_factory=list)
+    custom_properties: List[CustomProperty] = Field(default_factory=list)
+    # Phase 6 — set when placeholder asset is registered in Atlan on APPROVAL → ACTIVE
+    atlan_table_qualified_name: Optional[str] = None
+    atlan_table_guid: Optional[str] = None
+    atlan_table_url: Optional[str] = None  # Direct link into Atlan UI
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +338,7 @@ class ContractRequest(BaseModel):
     requester: Participant
     domain: Optional[str] = None
     data_product: Optional[str] = None
+    data_product_qualified_name: Optional[str] = None  # Atlan Data Product qualified_name
     desired_fields: Optional[List[str]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

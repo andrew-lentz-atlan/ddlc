@@ -28,10 +28,13 @@ from fastapi.staticfiles import StaticFiles
 
 from app.ddlc import store
 from app.ddlc.models import (
+    AccessLevel,
     ColumnSource,
     Comment,
     ContractRequest,
+    ContractRole,
     ContractStatus,
+    CustomProperty,
     DDLCSession,
     DDLCStage,
     LogicalType,
@@ -40,8 +43,11 @@ from app.ddlc.models import (
     MonitorMethod,
     QualityCheck,
     QualityCheckType,
+    RoleApprover,
     SchemaObject,
     SchemaProperty,
+    Server,
+    ServerType,
     SLAProperty,
     SourceTable,
     StageTransition,
@@ -158,6 +164,7 @@ async def create_session(payload: dict[str, Any]):
         requester=requester,
         domain=payload.get("domain") or None,
         data_product=payload.get("data_product") or None,
+        data_product_qualified_name=payload.get("data_product_qualified_name") or None,
         desired_fields=_parse_desired_fields(payload.get("desired_fields", "")),
     )
 
@@ -166,6 +173,7 @@ async def create_session(payload: dict[str, Any]):
         name=request.title,
         domain=request.domain,
         data_product=request.data_product,
+        data_product_qualified_name=request.data_product_qualified_name,
         description_purpose=request.description,
         status=ContractStatus.PROPOSED,
     )
@@ -246,7 +254,32 @@ async def advance_stage(session_id: str, payload: dict[str, Any]):
         session.contract.status = STAGE_TO_CONTRACT_STATUS[target_stage]
 
     await store.save_session(session)
-    return JSONResponse(content={"stage": target_stage.value})
+
+    # Phase 6 — register placeholder Table asset in Atlan on APPROVAL → ACTIVE
+    from app.ddlc import atlan_assets
+    import logging
+    atlan_url = None
+    atlan_warning = None
+    if target_stage == DDLCStage.ACTIVE and atlan_assets.is_configured():
+        try:
+            result = atlan_assets.register_placeholder_table(session)
+            session.contract.atlan_table_qualified_name = result["qualified_name"]
+            session.contract.atlan_table_guid = result["guid"]
+            session.contract.atlan_table_url = result["url"]
+            atlan_url = result["url"]
+            await store.save_session(session)
+        except Exception as exc:
+            msg = str(exc)
+            logging.getLogger(__name__).warning(f"Phase 6 Atlan registration failed: {msg}")
+            # Surface a friendly warning back to the UI
+            if "403" in msg or "not authorized" in msg:
+                atlan_warning = "Atlan asset registration skipped — the API key needs write permissions in Atlan admin."
+            elif "404" in msg or "not found" in msg:
+                atlan_warning = "Atlan asset registration skipped — the database/schema specified does not exist in the catalog. Use a crawled schema."
+            else:
+                atlan_warning = f"Atlan asset registration skipped: {msg[:120]}"
+
+    return JSONResponse(content={"stage": target_stage.value, "atlan_url": atlan_url, "atlan_warning": atlan_warning})
 
 
 # ---------------------------------------------------------------------------
@@ -739,6 +772,189 @@ async def delete_team_member(session_id: str, idx: int):
 
 
 # ---------------------------------------------------------------------------
+# Servers (infrastructure)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/sessions/{session_id}/contract/servers", response_class=JSONResponse)
+async def add_server(session_id: str, payload: dict[str, Any]):
+    """Add a server/infrastructure entry to the contract."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    server = Server(
+        type=ServerType(payload.get("type", "snowflake")),
+        environment=payload.get("environment", "prod"),
+        account=payload.get("account") or None,
+        database=payload.get("database") or None,
+        schema_name=payload.get("schema_name") or None,
+        host=payload.get("host") or None,
+        description=payload.get("description") or None,
+        connection_qualified_name=payload.get("connection_qualified_name") or None,
+    )
+    session.contract.servers.append(server)
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True, "id": server.id}, status_code=201)
+
+
+@app.put("/api/sessions/{session_id}/contract/servers/{server_id}", response_class=JSONResponse)
+async def update_server(session_id: str, server_id: str, payload: dict[str, Any]):
+    """Update a server entry."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    server = None
+    for s in session.contract.servers:
+        if s.id == server_id:
+            server = s
+            break
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    if "type" in payload:
+        server.type = ServerType(payload["type"])
+    if "environment" in payload:
+        server.environment = payload["environment"]
+    if "account" in payload:
+        server.account = payload["account"] or None
+    if "database" in payload:
+        server.database = payload["database"] or None
+    if "schema_name" in payload:
+        server.schema_name = payload["schema_name"] or None
+    if "host" in payload:
+        server.host = payload["host"] or None
+    if "description" in payload:
+        server.description = payload["description"] or None
+    if "connection_qualified_name" in payload:
+        server.connection_qualified_name = payload["connection_qualified_name"] or None
+
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True})
+
+
+@app.delete("/api/sessions/{session_id}/contract/servers/{server_id}")
+async def delete_server(session_id: str, server_id: str):
+    """Delete a server entry by ID."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    original_len = len(session.contract.servers)
+    session.contract.servers = [s for s in session.contract.servers if s.id != server_id]
+    if len(session.contract.servers) == original_len:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Roles & Access Control
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/sessions/{session_id}/contract/roles", response_class=JSONResponse)
+async def add_role(session_id: str, payload: dict[str, Any]):
+    """Add a role/access entry to the contract."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    approvers_raw = payload.get("approvers", [])
+    approvers = [RoleApprover(**a) for a in approvers_raw] if approvers_raw else []
+    role = ContractRole(
+        role=payload.get("role", ""),
+        access=AccessLevel(payload.get("access", "read")),
+        approvers=approvers,
+        description=payload.get("description") or None,
+    )
+    session.contract.roles.append(role)
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True, "id": role.id}, status_code=201)
+
+
+@app.put("/api/sessions/{session_id}/contract/roles/{role_id}", response_class=JSONResponse)
+async def update_role(session_id: str, role_id: str, payload: dict[str, Any]):
+    """Update a role entry."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    role = next((r for r in session.contract.roles if r.id == role_id), None)
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    if "role" in payload:
+        role.role = payload["role"]
+    if "access" in payload:
+        role.access = AccessLevel(payload["access"])
+    if "approvers" in payload:
+        role.approvers = [RoleApprover(**a) for a in payload["approvers"]]
+    if "description" in payload:
+        role.description = payload["description"] or None
+
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True})
+
+
+@app.delete("/api/sessions/{session_id}/contract/roles/{role_id}")
+async def delete_role(session_id: str, role_id: str):
+    """Delete a role entry by ID."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    original_len = len(session.contract.roles)
+    session.contract.roles = [r for r in session.contract.roles if r.id != role_id]
+    if len(session.contract.roles) == original_len:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Custom Properties
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/sessions/{session_id}/contract/custom-properties", response_class=JSONResponse)
+async def add_custom_property(session_id: str, payload: dict[str, Any]):
+    """Add a custom property key-value pair to the contract."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    prop = CustomProperty(
+        key=payload.get("key", ""),
+        value=payload.get("value", ""),
+    )
+    session.contract.custom_properties.append(prop)
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True, "id": prop.id}, status_code=201)
+
+
+@app.delete("/api/sessions/{session_id}/contract/custom-properties/{prop_id}")
+async def delete_custom_property(session_id: str, prop_id: str):
+    """Delete a custom property by ID."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    original_len = len(session.contract.custom_properties)
+    session.contract.custom_properties = [
+        p for p in session.contract.custom_properties if p.id != prop_id
+    ]
+    if len(session.contract.custom_properties) == original_len:
+        raise HTTPException(status_code=404, detail="Custom property not found")
+
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Comments
 # ---------------------------------------------------------------------------
 
@@ -877,6 +1093,34 @@ async def search_atlan_domains(q: str = Query("")):
     try:
         results = atlan_assets.search_data_domains(query=q)
         return JSONResponse(content=results)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/atlan/search-users", response_class=JSONResponse)
+async def search_atlan_users(q: str = Query(""), limit: int = Query(20)):
+    """Search Atlan users by email/username fragment for the approver picker."""
+    from app.ddlc import atlan_assets
+
+    if not atlan_assets.is_configured():
+        raise HTTPException(status_code=503, detail="Atlan credentials not configured")
+
+    try:
+        results = atlan_assets.search_users(query=q, limit=limit)
+        return JSONResponse(content={"users": results})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/atlan/search-connections", response_class=JSONResponse)
+async def search_atlan_connections(q: str = Query(""), connector: str = Query(""), limit: int = Query(20)):
+    """Search Atlan connections by name/connector type for the Server connection picker."""
+    from app.ddlc import atlan_assets
+    if not atlan_assets.is_configured():
+        raise HTTPException(status_code=503, detail="Atlan credentials not configured")
+    try:
+        results = atlan_assets.search_connections(query=q, connector_type=connector, limit=limit)
+        return JSONResponse(content={"connections": results})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -162,6 +162,95 @@ const DDLC = {
     // Request form
     // -----------------------------------------------------------------------
     request: {
+        _dpTimer: null,
+        _atlanConfigured: null,  // null = unknown, true/false once checked
+
+        async init() {
+            // Check whether Atlan is configured so we know how to behave
+            try {
+                const status = await DDLC.api.fetchJSON('/api/atlan/status');
+                this._atlanConfigured = status.configured === true;
+            } catch (_) {
+                this._atlanConfigured = false;
+            }
+
+            const searchInput = document.getElementById('data_product_search');
+            if (!searchInput) return;
+
+            if (!this._atlanConfigured) {
+                // Fall back to freeform text — repurpose the visible input
+                searchInput.placeholder = 'e.g., Customer Analytics';
+                // Keep hidden + visible in sync so submit picks up the value
+                searchInput.addEventListener('input', () => {
+                    const hiddenDp = document.getElementById('data_product');
+                    if (hiddenDp) hiddenDp.value = searchInput.value;
+                });
+            }
+        },
+
+        onDataProductSearch() {
+            clearTimeout(this._dpTimer);
+            this._dpTimer = setTimeout(async () => {
+                const searchInput = document.getElementById('data_product_search');
+                const q = (searchInput?.value || '').trim();
+
+                if (!this._atlanConfigured) return;
+
+                try {
+                    const url = `/api/atlan/search-products?q=${encodeURIComponent(q)}`;
+                    const data = await DDLC.api.fetchJSON(url);
+                    // Endpoint returns a list directly
+                    this.renderDataProductDropdown(Array.isArray(data) ? data : (data.products || []));
+                } catch (err) {
+                    console.warn('Data product search failed:', err.message);
+                }
+            }, 300);
+        },
+
+        renderDataProductDropdown(products) {
+            const dd = document.getElementById('dataProductDropdown');
+            if (!dd) return;
+            if (!products.length) {
+                dd.style.display = 'none';
+                return;
+            }
+            dd.innerHTML = products.map(p => {
+                const safeP = JSON.stringify(p).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem;
+                                   border-bottom:1px solid var(--border); transition:background 0.15s;"
+                             onmousedown="DDLC.request.selectDataProduct(${safeP.replace(/&quot;/g, "'")})"
+                             onmouseover="this.style.background='var(--bg-input)'"
+                             onmouseout="this.style.background=''">
+                    <div style="font-weight:600; color:var(--text);">${DDLC.request._esc(p.name)}</div>
+                    ${p.description ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${DDLC.request._esc(p.description)}</div>` : ''}
+                    <div style="font-size:0.7rem; color:var(--text-dim); margin-top:2px; font-family:monospace;">${DDLC.request._esc(p.qualified_name || '')}</div>
+                </div>`;
+            }).join('');
+            dd.style.display = 'block';
+        },
+
+        selectDataProduct(p) {
+            const searchInput = document.getElementById('data_product_search');
+            const hiddenDp = document.getElementById('data_product');
+            const hiddenQn = document.getElementById('data_product_qualified_name');
+            if (searchInput) searchInput.value = p.name || '';
+            if (hiddenDp) hiddenDp.value = p.name || '';
+            if (hiddenQn) hiddenQn.value = p.qualified_name || '';
+            this.hideDataProductDropdown();
+        },
+
+        hideDataProductDropdown() {
+            const dd = document.getElementById('dataProductDropdown');
+            if (dd) dd.style.display = 'none';
+        },
+
+        _esc(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        },
+
         async submit(event) {
             event.preventDefault();
             const form = document.getElementById('requestForm');
@@ -170,13 +259,22 @@ const DDLC = {
             btn.textContent = 'Submitting...';
 
             try {
+                const dpSearch = document.getElementById('data_product_search');
+                const dpHidden = document.getElementById('data_product');
+                const dpQnHidden = document.getElementById('data_product_qualified_name');
+
+                // If Atlan not configured, data_product comes from the search input directly
+                const dataProductName = (dpHidden?.value || dpSearch?.value || '').trim();
+                const dataProductQn = (dpQnHidden?.value || '').trim() || null;
+
                 const data = {
                     title: form.title.value,
                     description: form.description.value,
                     business_context: form.business_context.value,
                     target_use_case: form.target_use_case.value,
                     domain: form.domain.value,
-                    data_product: form.data_product.value,
+                    data_product: dataProductName || null,
+                    data_product_qualified_name: dataProductQn,
                     urgency: form.urgency.value,
                     desired_fields: form.desired_fields.value,
                     requester_name: form.requester_name.value,
