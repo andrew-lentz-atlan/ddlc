@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from app.ddlc.models import ODCSContract, QualityCheck, SchemaObject, SchemaProperty, SLAProperty
+from app.ddlc.models import ContractRole, CustomProperty, ODCSContract, QualityCheck, SchemaObject, SchemaProperty, SLAProperty, Server
 
 
 def _serialize_property(prop: SchemaProperty) -> dict[str, Any]:
@@ -116,6 +116,42 @@ def _serialize_sla(sla: SLAProperty) -> dict[str, Any]:
     return out
 
 
+def _serialize_server(server: Server) -> dict[str, Any]:
+    """Convert a Server to an ODCS-compliant dict."""
+    out: dict[str, Any] = {
+        "type": server.type.value,
+        "environment": server.environment,
+    }
+    if server.account:
+        out["account"] = server.account
+    if server.database:
+        out["database"] = server.database
+    if server.schema_name:
+        out["schema"] = server.schema_name  # ODCS uses "schema" not "schema_name"
+    if server.host:
+        out["host"] = server.host
+    if server.description:
+        out["description"] = server.description
+    return out
+
+
+def _serialize_role(role: ContractRole) -> dict[str, Any]:
+    """Convert a ContractRole to an ODCS-compliant dict."""
+    out: dict[str, Any] = {"role": role.role, "access": role.access.value}
+    if role.approvers:
+        # ODCS standard: approvers as list of emails; GUIDs are internal-only for Phase 6
+        out["approvers"] = [a.email for a in role.approvers]
+    if role.description:
+        out["description"] = role.description
+    return out
+
+
+def _serialize_custom_property(prop: CustomProperty) -> dict[str, Any]:
+    """Convert a CustomProperty to an ODCS key-value dict."""
+    # ODCS v3.1.0 customProperties format: [{property: "key", value: "val"}, ...]
+    return {"property": prop.key, "value": prop.value}
+
+
 def contract_to_odcs_dict(contract: ODCSContract) -> dict[str, Any]:
     """Convert an ODCSContract model to an ODCS v3.1.0 compliant dict."""
     odcs: dict[str, Any] = {
@@ -165,6 +201,18 @@ def contract_to_odcs_dict(contract: ODCSContract) -> dict[str, Any]:
         odcs["team"] = [
             {"name": t.name, "email": t.email, "role": t.role} for t in contract.team
         ]
+
+    # Servers (infrastructure)
+    if contract.servers:
+        odcs["servers"] = [_serialize_server(s) for s in contract.servers]
+
+    # Roles
+    if contract.roles:
+        odcs["roles"] = [_serialize_role(r) for r in contract.roles]
+
+    # Custom Properties
+    if contract.custom_properties:
+        odcs["customProperties"] = [_serialize_custom_property(p) for p in contract.custom_properties]
 
     return odcs
 

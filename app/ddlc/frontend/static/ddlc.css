@@ -1954,6 +1954,164 @@ body {
     margin-bottom: 2px;
 }
 
+/* ── Server / Infrastructure cards ─────────────────────────────────────── */
+
+.server-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: border-color 200ms ease;
+}
+
+.server-card:hover { border-color: var(--border-focus); }
+
+.server-card.expanded { border-color: var(--accent); }
+
+.server-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    cursor: pointer;
+    user-select: none;
+    min-height: 42px;
+}
+
+.server-card-type {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+    min-width: 90px;
+}
+
+.server-card-env {
+    font-size: 0.75rem;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.server-card-desc {
+    flex: 1;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.server-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.server-meta-tag {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.server-card-actions { flex-shrink: 0; }
+
+.server-edit-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.server-edit-body label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    display: block;
+}
+
+.server-edit-body input,
+.server-edit-body select,
+.server-edit-body textarea {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.85rem;
+}
+
+.server-edit-body input:focus,
+.server-edit-body select:focus,
+.server-edit-body textarea:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+.server-edit-body .inline-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.server-edit-body .inline-form-row.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.server-edit-body .form-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding-top: 4px;
+}
+
+/* ── Role / Access Control cards ────────────────────────────────────────── */
+.role-card { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; overflow: visible; transition: border-color 200ms ease; }
+.role-card:hover { border-color: var(--border-focus); }
+.role-card.expanded { border-color: var(--accent); }
+
+.role-card-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg-input); cursor: pointer; user-select: none; min-height: 42px; }
+.role-card-name { font-size: 0.82rem; font-weight: 600; color: var(--text); flex-shrink: 0; min-width: 130px; }
+.role-card-access { font-size: 0.72rem; font-weight: 600; flex-shrink: 0; }
+.role-card-desc { flex: 1; font-size: 0.78rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.role-card-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; max-width: 300px; }
+.role-meta-tag { font-size: 0.7rem; color: var(--text-dim); white-space: nowrap; }
+.role-card-actions { flex-shrink: 0; }
+
+.role-edit-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); background: var(--bg); overflow: visible; }
+.role-edit-body label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; display: block; }
+.role-edit-body input, .role-edit-body select, .role-edit-body textarea { width: 100%; padding: 8px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 0.85rem; }
+.role-edit-body input:focus, .role-edit-body select:focus, .role-edit-body textarea:focus { outline: none; border-color: var(--border-focus); }
+.role-edit-body .inline-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.role-edit-body .form-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
+
+/* Atlan user picker for approvers */
+.approver-picker { position: relative; }
+.approver-picker-input { width: 100%; padding: 8px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 0.85rem; }
+.approver-picker-input:focus { outline: none; border-color: var(--border-focus); }
+.approver-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 1500; background: var(--bg-input); border: 1px solid var(--border-focus); border-radius: var(--radius); max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.approver-option { padding: 8px 12px; cursor: pointer; font-size: 0.82rem; display: flex; flex-direction: column; gap: 2px; }
+.approver-option:hover { background: rgba(99,102,241,0.1); }
+.approver-option-name { color: var(--text); font-weight: 500; }
+.approver-option-email { color: var(--text-muted); font-size: 0.72rem; }
+.approver-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; min-height: 28px; }
+.approver-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25); border-radius: 12px; font-size: 0.72rem; color: var(--accent); }
+.approver-tag button { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 0.75rem; padding: 0; line-height: 1; }
+
+/* ── Custom Properties ───────────────────────────────────────────────────── */
+.customprop-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-input); border-radius: var(--radius); margin-bottom: 6px; font-size: 0.82rem; }
+.customprop-key { font-family: var(--font-mono); font-weight: 600; color: var(--accent); flex-shrink: 0; min-width: 120px; }
+.customprop-sep { color: var(--text-dim); flex-shrink: 0; }
+.customprop-value { font-family: var(--font-mono); color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------------------------------------------------------------------------
    Responsive
 --------------------------------------------------------------------------- */
