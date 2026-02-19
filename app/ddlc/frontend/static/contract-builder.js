@@ -69,6 +69,7 @@ const ContractApp = {
             // Show YAML toggle from specification onward
             const idx = this.STAGES.indexOf(this.session.current_stage);
             document.getElementById('yamlToggle').style.display = idx >= 2 ? '' : 'none';
+            document.getElementById('dbtToggle').style.display = idx >= 2 ? '' : 'none';
         } catch (err) {
             document.getElementById('mainContent').innerHTML = `
                 <div class="empty-state"><h3>Session not found</h3><a href="/" class="btn">Back to Dashboard</a></div>
@@ -3422,6 +3423,111 @@ const ContractApp = {
 
     async downloadYaml() {
         window.open(`/api/sessions/${this.sessionId}/contract/download`, '_blank');
+    },
+
+    // -----------------------------------------------------------------------
+    // dbt Project panel
+    // -----------------------------------------------------------------------
+
+    /** Cache of {relative_path: content} from the last preview load. */
+    _dbtFiles: {},
+
+    async showDbtPanel() {
+        const overlay = document.getElementById('dbtOverlay');
+        overlay.style.display = 'flex';
+
+        // Check dbt Cloud configuration and show/hide the trigger button
+        try {
+            const status = await DDLC.api.fetchJSON('/api/dbt/status');
+            document.getElementById('dbtCloudBtn').style.display = status.configured ? '' : 'none';
+        } catch (_) {
+            document.getElementById('dbtCloudBtn').style.display = 'none';
+        }
+
+        await this._loadDbtPreview();
+    },
+
+    hideDbtPanel() {
+        document.getElementById('dbtOverlay').style.display = 'none';
+    },
+
+    async _loadDbtPreview() {
+        const tree = document.getElementById('dbtFileTree');
+        const content = document.getElementById('dbtFileContent');
+        tree.innerHTML = '<div class="dbt-folder-label">Loading…</div>';
+        content.textContent = '';
+
+        try {
+            const data = await DDLC.api.fetchJSON(`/api/sessions/${this.sessionId}/contract/dbt/preview`);
+            this._dbtFiles = data.files || {};
+            this._renderDbtFileTree();
+            // Auto-select the first file
+            const paths = Object.keys(this._dbtFiles);
+            if (paths.length > 0) {
+                this._showDbtFile(paths[0]);
+            }
+        } catch (err) {
+            tree.innerHTML = '<div class="dbt-folder-label" style="color:var(--danger)">Error loading preview</div>';
+            content.textContent = String(err);
+        }
+    },
+
+    _renderDbtFileTree() {
+        const tree = document.getElementById('dbtFileTree');
+        const paths = Object.keys(this._dbtFiles).sort();
+        const html = [];
+
+        // Separate root-level files from models/ subfolder
+        const rootFiles = paths.filter(p => !p.startsWith('models/'));
+        const modelFiles = paths.filter(p => p.startsWith('models/'));
+
+        for (const p of rootFiles) {
+            const name = p.split('/').pop();
+            html.push(`<div class="dbt-file-item" data-path="${this.esc(p)}" onclick="ContractApp._showDbtFile('${this.esc(p)}')">${this.esc(name)}</div>`);
+        }
+
+        if (modelFiles.length > 0) {
+            html.push('<div class="dbt-folder-label">models/</div>');
+            for (const p of modelFiles) {
+                const name = p.split('/').pop();
+                html.push(`<div class="dbt-file-item" style="padding-left:20px;" data-path="${this.esc(p)}" onclick="ContractApp._showDbtFile('${this.esc(p)}')">${this.esc(name)}</div>`);
+            }
+        }
+
+        tree.innerHTML = html.join('');
+    },
+
+    _showDbtFile(path) {
+        const content = document.getElementById('dbtFileContent');
+        content.textContent = this._dbtFiles[path] || '';
+
+        // Toggle active class on file tree items
+        document.querySelectorAll('#dbtFileTree .dbt-file-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.path === path);
+        });
+    },
+
+    async downloadDbt() {
+        window.open(`/api/sessions/${this.sessionId}/contract/dbt/download`, '_blank');
+    },
+
+    async triggerDbtCloud() {
+        const btn = document.getElementById('dbtCloudBtn');
+        const orig = btn.textContent;
+        btn.textContent = 'Triggering…';
+        btn.disabled = true;
+        try {
+            const result = await DDLC.api.fetchJSON(
+                `/api/sessions/${this.sessionId}/contract/dbt/trigger`,
+                { method: 'POST' }
+            );
+            DDLC.ui.toast(`dbt Cloud run triggered! Run ID: ${result.run?.data?.id || '—'}`, 'success');
+        } catch (err) {
+            DDLC.ui.toast(`Failed to trigger dbt Cloud run: ${err.message || err}`, 'error');
+        } finally {
+            btn.textContent = orig;
+            btn.disabled = false;
+        }
     },
 
     // -----------------------------------------------------------------------

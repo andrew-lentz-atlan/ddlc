@@ -1026,6 +1026,62 @@ async def download_yaml(session_id: str):
 
 
 # ---------------------------------------------------------------------------
+# dbt model generation
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/dbt/status", response_class=JSONResponse)
+async def dbt_status():
+    """Check if dbt Cloud credentials are configured."""
+    from app.ddlc import dbt_generator
+    return JSONResponse(content={"configured": dbt_generator.is_configured()})
+
+
+@app.get("/api/sessions/{session_id}/contract/dbt/preview", response_class=JSONResponse)
+async def dbt_preview(session_id: str):
+    """Return {relative_path: content} preview of the generated dbt project."""
+    from app.ddlc import dbt_generator
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    files = dbt_generator.generate_dbt_preview(session.contract)
+    return JSONResponse(content={"files": files})
+
+
+@app.get("/api/sessions/{session_id}/contract/dbt/download")
+async def dbt_download(session_id: str):
+    """Download the generated dbt project as a ZIP archive."""
+    import re as _re
+    from app.ddlc import dbt_generator
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    zip_bytes = dbt_generator.generate_dbt_zip(session.contract)
+    project_name = _re.sub(r"[^a-zA-Z0-9_]", "_", session.contract.name or "contract").lower()
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{project_name}_dbt_project.zip"'},
+    )
+
+
+@app.post("/api/sessions/{session_id}/contract/dbt/trigger", response_class=JSONResponse)
+async def dbt_cloud_trigger(session_id: str):
+    """Trigger a dbt Cloud job run for this contract."""
+    from app.ddlc import dbt_generator
+    if not dbt_generator.is_configured():
+        raise HTTPException(status_code=503, detail="dbt Cloud credentials not configured")
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        result = dbt_generator.trigger_dbt_cloud_run(session.contract)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return JSONResponse(content={"ok": True, "run": result})
+
+
+# ---------------------------------------------------------------------------
 # Atlan metadata integration
 # ---------------------------------------------------------------------------
 

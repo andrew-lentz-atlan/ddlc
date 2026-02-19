@@ -2154,3 +2154,40 @@ body {
         display: none;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   dbt Project panel
+   --------------------------------------------------------------------------- */
+
+.dbt-folder-label {
+    padding: 8px 12px 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.dbt-file-item {
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    border-radius: 4px;
+    margin: 1px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background var(--transition), color var(--transition);
+}
+
+.dbt-file-item:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.dbt-file-item.active {
+    background: var(--bg-hover);
+    color: var(--text);
+    font-weight: 600;
+}
