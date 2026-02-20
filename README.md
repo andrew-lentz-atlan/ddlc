@@ -6,11 +6,56 @@
 
 | Branch | Purpose | How to run |
 |--------|---------|-----------|
-| **`main`** ← you are here | **Standalone / portable demo.** Pure FastAPI, no Atlan infrastructure required. Run locally or share as a live demo. | `uv run python -m app.ddlc.server` |
-| **[`atlan-app`](https://github.com/andrew-lentz-atlan/ddlc/tree/atlan-app)** | **Atlan App Framework conversion.** Built on the Atlan Application SDK with Temporal workflows + Dapr. Designed for deployment on a real Atlan tenant (iframe-embedded in the left nav). | `poe start-deps && uv run python main.py` |
+| **[`main`](https://github.com/andrew-lentz-atlan/ddlc/tree/main)** | **Standalone / portable demo.** Pure FastAPI, no Atlan infrastructure required. Run locally or share as a live demo. | `uv run python -m app.ddlc.server` |
+| **[`atlan-app`](https://github.com/andrew-lentz-atlan/ddlc/tree/atlan-app)** ← you are here | **Atlan App Framework conversion.** Built on the Atlan Application SDK with Temporal workflows + Dapr. Designed for deployment on a real Atlan tenant (iframe-embedded in the left nav). | `poe start-deps && uv run python main.py` |
 
-> **`main`** is the demo branch — zero infra dependencies, runs anywhere.
-> **`atlan-app`** is the product branch — the real thing, deployable on a tenant.
+> **`atlan-app`** is the product branch — for real tenant deployment and in-product demos.
+> For a zero-infra portable demo, use [`main`](https://github.com/andrew-lentz-atlan/ddlc/tree/main).
+
+---
+
+## App Framework Migration Status
+
+This branch is the Atlan Application SDK conversion of the standalone DDLC app.
+It runs as a proper Atlan app — iframe-embedded in the Atlan left nav, deployed in a
+tenant's cluster, with Temporal-backed durable workflows and Dapr statestore.
+
+### Migration Progress
+
+| Step | What | Status |
+|------|------|--------|
+| 1 | Refactor `server.py` → `APIRouter` (remove standalone `FastAPI()` instance) | 🔲 Pending |
+| 2 | Rewrite `main.py` with `BaseApplication` + `DDLCServer(APIServer)` | 🔲 Pending |
+| 3 | `DDLCApprovalWorkflow` + `DDLCActivities` (Temporal workflow for approval → active) | 🔲 Pending |
+| 4 | Wire approval endpoint to kick off Temporal workflow | 🔲 Pending |
+| 5 | `atlan-app-registry.json` (app registration manifest) | 🔲 Pending |
+| 6 | `Dockerfile` (based on SDK base image) | 🔲 Pending |
+| 7 | `store.py` → Dapr statestore (Redis) for session persistence across restarts | 🔲 Pending |
+
+### What stays unchanged from `main`
+All DDLC business logic is untouched — only the plumbing changes:
+- `app/ddlc/models.py` — Pydantic models
+- `app/ddlc/odcs.py` — ODCS v3.1.0 YAML serializer
+- `app/ddlc/atlan_assets.py` — Atlan read/write integration
+- `app/ddlc/dbt_generator.py` — dbt project generator
+- `app/ddlc/demo_seed.py` — demo sessions (Wide World Importers dataset)
+- `app/ddlc/frontend/` — all HTML/CSS/JS (works as-is inside an iframe)
+
+### Local Development (after migration complete)
+
+```bash
+# Install dependencies
+uv sync
+
+# Start Dapr + Temporal (required for App Framework)
+poe start-deps
+
+# Run the app (port 8000)
+uv run python main.py
+
+# Temporal workflow UI — see approval workflows execute live
+open http://localhost:8233
+```
 
 ---
 
