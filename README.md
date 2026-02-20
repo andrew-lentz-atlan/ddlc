@@ -24,13 +24,13 @@ tenant's cluster, with Temporal-backed durable workflows and Dapr statestore.
 
 | Step | What | Status |
 |------|------|--------|
-| 1 | Refactor `server.py` → `APIRouter` (remove standalone `FastAPI()` instance) | 🔲 Pending |
-| 2 | Rewrite `main.py` with `BaseApplication` + `DDLCServer(APIServer)` | 🔲 Pending |
-| 3 | `DDLCApprovalWorkflow` + `DDLCActivities` (Temporal workflow for approval → active) | 🔲 Pending |
-| 4 | Wire approval endpoint to kick off Temporal workflow | 🔲 Pending |
-| 5 | `atlan-app-registry.json` (app registration manifest) | 🔲 Pending |
-| 6 | `Dockerfile` (based on SDK base image) | 🔲 Pending |
-| 7 | `store.py` → Dapr statestore (Redis) for session persistence across restarts | 🔲 Pending |
+| 1 | Refactor `server.py` → `APIRouter` (remove standalone `FastAPI()` instance) | ✅ Complete |
+| 2 | Rewrite `main.py` with `DDLCApplication(BaseApplication)` + `DDLCServer(APIServer)` | ✅ Complete |
+| 3 | `DDLCApprovalWorkflow` + `DDLCActivities` (Temporal workflow for approval → active) | ✅ Complete |
+| 4 | Wire approval endpoint to kick off Temporal workflow via `ddlc_workflow_client.py` | ✅ Complete |
+| 5 | `atlan-app-registry.json` (app registration manifest) | ✅ Complete |
+| 6 | `Dockerfile` (based on SDK base image `application-sdk:main-2.3.1`) | ✅ Complete |
+| 7 | `store.py` → Dapr statestore (Redis) for session persistence across restarts | 🔲 For tenant deploy |
 
 ### What stays unchanged from `main`
 All DDLC business logic is untouched — only the plumbing changes:
