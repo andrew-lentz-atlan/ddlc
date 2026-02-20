@@ -1,0 +1,24 @@
+{
+  "name": "ddlc",
+  "displayName": "Data Contract Lifecycle",
+  "description": "End-to-end lifecycle management for ODCS v3.1.0 data contracts — from request through approval to live Atlan asset registration and dbt model generation.",
+  "type": "app",
+  "version": "0.1.0",
+  "published": true,
+  "author": "Atlan",
+  "entrypoint": "main.py",
+  "port": 8000,
+  "ui": {
+    "type": "iframe",
+    "path": "/"
+  },
+  "requiredEnvVars": [
+    "ATLAN_BASE_URL",
+    "ATLAN_API_KEY"
+  ],
+  "optionalEnvVars": [
+    "DBT_CLOUD_API_KEY",
+    "DBT_CLOUD_ACCOUNT_ID",
+    "DBT_CLOUD_JOB_ID"
+  ]
+}
