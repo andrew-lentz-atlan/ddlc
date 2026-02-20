@@ -2,7 +2,15 @@
 
 **A collaborative platform for building, reviewing, and managing data contracts using the [ODCS v3.1.0](https://bitol.io/spec/open-data-contract-standard/) standard — powered by [Atlan](https://atlan.com).**
 
-> Built during the Atlan Hackathon 2025 as an [Atlan Application SDK](https://developer.atlan.com/getting-started/) app.
+## Branches
+
+| Branch | Purpose | How to run |
+|--------|---------|-----------|
+| **`main`** ← you are here | **Standalone / portable demo.** Pure FastAPI, no Atlan infrastructure required. Run locally or share as a live demo. | `uv run python -m app.ddlc.server` |
+| **[`atlan-app`](https://github.com/andrew-lentz-atlan/ddlc/tree/atlan-app)** | **Atlan App Framework conversion.** Built on the Atlan Application SDK with Temporal workflows + Dapr. Designed for deployment on a real Atlan tenant (iframe-embedded in the left nav). | `poe start-deps && uv run python main.py` |
+
+> **`main`** is the demo branch — zero infra dependencies, runs anywhere.
+> **`atlan-app`** is the product branch — the real thing, deployable on a tenant.
 
 ---
 
