@@ -1,30 +1,24 @@
 """
-Standalone FastAPI server for the DDLC platform.
+DDLC REST API — FastAPI router.
 
-Run with:
-    cd hello_world
-    uv run python -m app.ddlc.server
+This module exposes the full DDLC API as a FastAPI APIRouter so it can be
+mounted on the Atlan Application SDK's APIServer in main.py.
 
-Then open http://localhost:8002 in your browser.
+It no longer owns a FastAPI() instance, static file serving, or an entry
+point — those live in main.py.
 
-This is a self-contained server — it does NOT require Dapr or Temporal.
+For the standalone demo (main branch), see git branch `main`.
 """
 
 from __future__ import annotations
-
-from dotenv import load_dotenv
-
-load_dotenv()  # Load .env file (ATLAN_BASE_URL, ATLAN_API_KEY, etc.)
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-from fastapi.staticfiles import StaticFiles
 
 from app.ddlc import store
 from app.ddlc.models import (
@@ -38,9 +32,9 @@ from app.ddlc.models import (
     DDLCSession,
     DDLCStage,
     LogicalType,
+    MonitorMethod,
     ODCSContract,
     Participant,
-    MonitorMethod,
     QualityCheck,
     QualityCheckType,
     RoleApprover,
@@ -59,57 +53,33 @@ from app.ddlc.models import (
 from app.ddlc.odcs import contract_to_yaml
 
 # ---------------------------------------------------------------------------
-# FastAPI app (with lifespan for demo seed)
+# Lifespan — seed demo data on startup
 # ---------------------------------------------------------------------------
 
 
 @asynccontextmanager
-async def lifespan(application: FastAPI):
+async def ddlc_lifespan(app):
     """Seed demo data on startup so the platform is ready for demos immediately."""
     from app.ddlc.demo_seed import seed_demo_data
 
-    print("\n  Seeding demo data...")
+    print("\n  Seeding DDLC demo data...")
     ids = await seed_demo_data()
     print(f"  Seeded {len(ids)} demo sessions.\n")
-    yield  # App runs here
-    # Shutdown logic (none needed)
+    yield
 
 
-app = FastAPI(
-    title="DDLC — Data Contract Development Lifecycle",
-    version="0.1.0",
-    lifespan=lifespan,
-)
+# ---------------------------------------------------------------------------
+# Router — all DDLC endpoints registered here
+# ---------------------------------------------------------------------------
 
-STATIC_DIR = Path(__file__).parent / "frontend" / "static"
-TEMPLATE_DIR = Path(__file__).parent / "frontend"
-
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-
-
-class NoCacheStaticMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/static"):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-        return response
-
-
-app.add_middleware(NoCacheStaticMiddleware)
-
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
+router = APIRouter()
 
 # ---------------------------------------------------------------------------
 # Demo seed endpoint (manual re-seed)
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/demo/seed", response_class=JSONResponse)
+@router.post("/api/demo/seed", response_class=JSONResponse)
 async def reseed_demo_data():
     """Re-seed demo data (clears existing sessions first)."""
     from app.ddlc.demo_seed import seed_demo_data
@@ -120,34 +90,11 @@ async def reseed_demo_data():
 
 
 # ---------------------------------------------------------------------------
-# HTML pages
-# ---------------------------------------------------------------------------
-
-
-@app.get("/", response_class=HTMLResponse)
-async def dashboard():
-    """Serve the dashboard page."""
-    return HTMLResponse(content=(TEMPLATE_DIR / "index.html").read_text())
-
-
-@app.get("/request", response_class=HTMLResponse)
-async def request_form():
-    """Serve the new request form."""
-    return HTMLResponse(content=(TEMPLATE_DIR / "request.html").read_text())
-
-
-@app.get("/contract/{session_id}", response_class=HTMLResponse)
-async def contract_detail(session_id: str):
-    """Serve the contract detail page."""
-    return HTMLResponse(content=(TEMPLATE_DIR / "contract.html").read_text())
-
-
-# ---------------------------------------------------------------------------
 # Session CRUD
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions", response_class=JSONResponse)
+@router.post("/api/sessions", response_class=JSONResponse)
 async def create_session(payload: dict[str, Any]):
     """Create a new DDLC session from a contract request."""
     requester = Participant(
@@ -188,7 +135,7 @@ async def create_session(payload: dict[str, Any]):
     return JSONResponse(content={"id": session.id}, status_code=201)
 
 
-@app.get("/api/sessions", response_class=JSONResponse)
+@router.get("/api/sessions", response_class=JSONResponse)
 async def list_sessions(stage: Optional[str] = Query(None)):
     """List all sessions, optionally filtered by stage."""
     stage_filter = DDLCStage(stage) if stage else None
@@ -196,7 +143,7 @@ async def list_sessions(stage: Optional[str] = Query(None)):
     return JSONResponse(content=[_session_summary(s) for s in sessions])
 
 
-@app.get("/api/sessions/{session_id}", response_class=JSONResponse)
+@router.get("/api/sessions/{session_id}", response_class=JSONResponse)
 async def get_session(session_id: str):
     """Get full session detail."""
     session = await store.get_session(session_id)
@@ -205,7 +152,7 @@ async def get_session(session_id: str):
     return JSONResponse(content=session.model_dump(mode="json"))
 
 
-@app.delete("/api/sessions/{session_id}")
+@router.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete a session."""
     deleted = await store.delete_session(session_id)
@@ -219,7 +166,7 @@ async def delete_session(session_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.put("/api/sessions/{session_id}/stage", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/stage", response_class=JSONResponse)
 async def advance_stage(session_id: str, payload: dict[str, Any]):
     """Advance (or set) the DDLC stage for a session."""
     session = await store.get_session(session_id)
@@ -255,29 +202,35 @@ async def advance_stage(session_id: str, payload: dict[str, Any]):
 
     await store.save_session(session)
 
-    # Phase 6 — register placeholder Table asset in Atlan on APPROVAL → ACTIVE
-    from app.ddlc import atlan_assets
-    import logging
+    # On APPROVAL → ACTIVE: kick off the Temporal workflow (durable, observable)
+    # The workflow handles Atlan asset registration + dbt artifact generation.
     atlan_url = None
     atlan_warning = None
-    if target_stage == DDLCStage.ACTIVE and atlan_assets.is_configured():
+    if target_stage == DDLCStage.ACTIVE:
         try:
-            result = atlan_assets.register_placeholder_table(session)
-            session.contract.atlan_table_qualified_name = result["qualified_name"]
-            session.contract.atlan_table_guid = result["guid"]
-            session.contract.atlan_table_url = result["url"]
-            atlan_url = result["url"]
-            await store.save_session(session)
-        except Exception as exc:
-            msg = str(exc)
-            logging.getLogger(__name__).warning(f"Phase 6 Atlan registration failed: {msg}")
-            # Surface a friendly warning back to the UI
-            if "403" in msg or "not authorized" in msg:
-                atlan_warning = "Atlan asset registration skipped — the API key needs write permissions in Atlan admin."
-            elif "404" in msg or "not found" in msg:
-                atlan_warning = "Atlan asset registration skipped — the database/schema specified does not exist in the catalog. Use a crawled schema."
-            else:
-                atlan_warning = f"Atlan asset registration skipped: {msg[:120]}"
+            from app.ddlc_workflow_client import trigger_approval_workflow
+            await trigger_approval_workflow(session_id)
+        except ImportError:
+            # Temporal not yet wired — fall back to synchronous Atlan registration
+            from app.ddlc import atlan_assets
+            import logging
+            if atlan_assets.is_configured():
+                try:
+                    result = atlan_assets.register_placeholder_table(session)
+                    session.contract.atlan_table_qualified_name = result["qualified_name"]
+                    session.contract.atlan_table_guid = result["guid"]
+                    session.contract.atlan_table_url = result["url"]
+                    atlan_url = result["url"]
+                    await store.save_session(session)
+                except Exception as exc:
+                    msg = str(exc)
+                    logging.getLogger(__name__).warning(f"Atlan registration failed: {msg}")
+                    if "403" in msg or "not authorized" in msg:
+                        atlan_warning = "Atlan asset registration skipped — the API key needs write permissions in Atlan admin."
+                    elif "404" in msg or "not found" in msg:
+                        atlan_warning = "Atlan asset registration skipped — the database/schema specified does not exist in the catalog."
+                    else:
+                        atlan_warning = f"Atlan asset registration skipped: {msg[:120]}"
 
     return JSONResponse(content={"stage": target_stage.value, "atlan_url": atlan_url, "atlan_warning": atlan_warning})
 
@@ -287,7 +240,7 @@ async def advance_stage(session_id: str, payload: dict[str, Any]):
 # ---------------------------------------------------------------------------
 
 
-@app.put("/api/sessions/{session_id}/contract/metadata", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/contract/metadata", response_class=JSONResponse)
 async def update_contract_metadata(session_id: str, payload: dict[str, Any]):
     """Update contract metadata fields."""
     session = await store.get_session(session_id)
@@ -323,7 +276,7 @@ async def update_contract_metadata(session_id: str, payload: dict[str, Any]):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/objects", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/objects", response_class=JSONResponse)
 async def add_schema_object(session_id: str, payload: dict[str, Any]):
     """Add a new schema object (table) to the contract."""
     session = await store.get_session(session_id)
@@ -334,7 +287,6 @@ async def add_schema_object(session_id: str, payload: dict[str, Any]):
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
-    # Check for duplicate
     if any(o.name == name for o in session.contract.schema_objects):
         raise HTTPException(status_code=409, detail=f"Object '{name}' already exists")
 
@@ -348,7 +300,7 @@ async def add_schema_object(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "name": name}, status_code=201)
 
 
-@app.put("/api/sessions/{session_id}/contract/objects/{obj_name}", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/contract/objects/{obj_name}", response_class=JSONResponse)
 async def update_schema_object(session_id: str, obj_name: str, payload: dict[str, Any]):
     """Update a schema object's metadata."""
     session = await store.get_session(session_id)
@@ -365,7 +317,7 @@ async def update_schema_object(session_id: str, obj_name: str, payload: dict[str
     return JSONResponse(content={"ok": True})
 
 
-@app.delete("/api/sessions/{session_id}/contract/objects/{obj_name}")
+@router.delete("/api/sessions/{session_id}/contract/objects/{obj_name}")
 async def delete_schema_object(session_id: str, obj_name: str):
     """Delete a schema object and all its properties."""
     session = await store.get_session(session_id)
@@ -388,7 +340,7 @@ async def delete_schema_object(session_id: str, obj_name: str):
 # ---------------------------------------------------------------------------
 
 
-@app.post(
+@router.post(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties",
     response_class=JSONResponse,
 )
@@ -423,9 +375,9 @@ async def add_property(session_id: str, obj_name: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "name": name}, status_code=201)
 
 
-# IMPORTANT: /reorder must be defined BEFORE /{prop_name} so FastAPI doesn't match
-# "reorder" as a prop_name.
-@app.post(
+# IMPORTANT: /reorder must be defined BEFORE /{prop_name} so FastAPI doesn't
+# match "reorder" as a prop_name.
+@router.post(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties/reorder",
     response_class=JSONResponse,
 )
@@ -445,7 +397,6 @@ async def reorder_property(session_id: str, obj_name: str, payload: dict[str, An
     if direction not in ("up", "down"):
         raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
 
-    # Find current index
     idx = None
     for i, p in enumerate(obj.properties):
         if p.name == prop_name:
@@ -454,7 +405,6 @@ async def reorder_property(session_id: str, obj_name: str, payload: dict[str, An
     if idx is None:
         raise HTTPException(status_code=404, detail=f"Property '{prop_name}' not found")
 
-    # Calculate swap target
     if direction == "up" and idx > 0:
         obj.properties[idx], obj.properties[idx - 1] = obj.properties[idx - 1], obj.properties[idx]
         new_idx = idx - 1
@@ -462,13 +412,13 @@ async def reorder_property(session_id: str, obj_name: str, payload: dict[str, An
         obj.properties[idx], obj.properties[idx + 1] = obj.properties[idx + 1], obj.properties[idx]
         new_idx = idx + 1
     else:
-        return JSONResponse(content={"ok": True, "new_index": idx})  # Already at boundary
+        return JSONResponse(content={"ok": True, "new_index": idx})
 
     await store.save_session(session)
     return JSONResponse(content={"ok": True, "new_index": new_idx})
 
 
-@app.put(
+@router.put(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties/{prop_name}",
     response_class=JSONResponse,
 )
@@ -513,7 +463,7 @@ async def update_property(session_id: str, obj_name: str, prop_name: str, payloa
     return JSONResponse(content={"ok": True})
 
 
-@app.delete(
+@router.delete(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties/{prop_name}",
 )
 async def delete_property(session_id: str, obj_name: str, prop_name: str):
@@ -537,7 +487,7 @@ async def delete_property(session_id: str, obj_name: str, prop_name: str):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/quality", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/quality", response_class=JSONResponse)
 async def add_quality_check(session_id: str, payload: dict[str, Any]):
     """Add a quality check to the contract."""
     session = await store.get_session(session_id)
@@ -553,7 +503,6 @@ async def add_quality_check(session_id: str, payload: dict[str, Any]):
         must_be=payload.get("must_be") or None,
         must_be_greater_than=payload.get("must_be_greater_than"),
         must_be_less_than=payload.get("must_be_less_than"),
-        # Phase 1.2 fields
         schedule=payload.get("schedule") or None,
         scheduler=payload.get("scheduler") or None,
         business_impact=payload.get("business_impact") or None,
@@ -567,18 +516,14 @@ async def add_quality_check(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "id": check.id}, status_code=201)
 
 
-@app.put("/api/sessions/{session_id}/contract/quality/{check_id}", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/contract/quality/{check_id}", response_class=JSONResponse)
 async def update_quality_check(session_id: str, check_id: str, payload: dict[str, Any]):
     """Update a quality check."""
     session = await store.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    check = None
-    for q in session.contract.quality_checks:
-        if q.id == check_id:
-            check = q
-            break
+    check = next((q for q in session.contract.quality_checks if q.id == check_id), None)
     if not check:
         raise HTTPException(status_code=404, detail="Quality check not found")
 
@@ -598,7 +543,6 @@ async def update_quality_check(session_id: str, check_id: str, payload: dict[str
         check.must_be_greater_than = payload["must_be_greater_than"]
     if "must_be_less_than" in payload:
         check.must_be_less_than = payload["must_be_less_than"]
-    # Phase 1.2 fields
     if "schedule" in payload:
         check.schedule = payload["schedule"] or None
     if "scheduler" in payload:
@@ -618,7 +562,7 @@ async def update_quality_check(session_id: str, check_id: str, payload: dict[str
     return JSONResponse(content={"ok": True})
 
 
-@app.delete("/api/sessions/{session_id}/contract/quality/{check_id}")
+@router.delete("/api/sessions/{session_id}/contract/quality/{check_id}")
 async def delete_quality_check(session_id: str, check_id: str):
     """Delete a quality check."""
     session = await store.get_session(session_id)
@@ -641,7 +585,7 @@ async def delete_quality_check(session_id: str, check_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/sla", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/sla", response_class=JSONResponse)
 async def add_sla(session_id: str, payload: dict[str, Any]):
     """Add an SLA property."""
     session = await store.get_session(session_id)
@@ -653,7 +597,6 @@ async def add_sla(session_id: str, payload: dict[str, Any]):
         value=payload.get("value", ""),
         unit=payload.get("unit") or None,
         description=payload.get("description") or None,
-        # Phase 1.3 fields
         schedule=payload.get("schedule") or None,
         scheduler=payload.get("scheduler") or None,
         driver=payload.get("driver") or None,
@@ -664,18 +607,14 @@ async def add_sla(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "id": sla.id}, status_code=201)
 
 
-@app.put("/api/sessions/{session_id}/contract/sla/{sla_id}", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/contract/sla/{sla_id}", response_class=JSONResponse)
 async def update_sla(session_id: str, sla_id: str, payload: dict[str, Any]):
     """Update an SLA property."""
     session = await store.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    sla = None
-    for s in session.contract.sla_properties:
-        if s.id == sla_id:
-            sla = s
-            break
+    sla = next((s for s in session.contract.sla_properties if s.id == sla_id), None)
     if not sla:
         raise HTTPException(status_code=404, detail="SLA property not found")
 
@@ -687,7 +626,6 @@ async def update_sla(session_id: str, sla_id: str, payload: dict[str, Any]):
         sla.unit = payload["unit"] or None
     if "description" in payload:
         sla.description = payload["description"] or None
-    # Phase 1.3 fields
     if "schedule" in payload:
         sla.schedule = payload["schedule"] or None
     if "scheduler" in payload:
@@ -701,7 +639,7 @@ async def update_sla(session_id: str, sla_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True})
 
 
-@app.delete("/api/sessions/{session_id}/contract/sla/by-id/{sla_id}")
+@router.delete("/api/sessions/{session_id}/contract/sla/by-id/{sla_id}")
 async def delete_sla_by_id(session_id: str, sla_id: str):
     """Delete an SLA property by ID."""
     session = await store.get_session(session_id)
@@ -719,7 +657,7 @@ async def delete_sla_by_id(session_id: str, sla_id: str):
     return JSONResponse(content={"ok": True})
 
 
-@app.delete("/api/sessions/{session_id}/contract/sla/{idx}")
+@router.delete("/api/sessions/{session_id}/contract/sla/{idx}")
 async def delete_sla(session_id: str, idx: int):
     """Delete an SLA property by index (legacy — prefer by-id)."""
     session = await store.get_session(session_id)
@@ -739,7 +677,7 @@ async def delete_sla(session_id: str, idx: int):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/team", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/team", response_class=JSONResponse)
 async def add_team_member(session_id: str, payload: dict[str, Any]):
     """Add a team member to the contract."""
     session = await store.get_session(session_id)
@@ -756,7 +694,7 @@ async def add_team_member(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True}, status_code=201)
 
 
-@app.delete("/api/sessions/{session_id}/contract/team/{idx}")
+@router.delete("/api/sessions/{session_id}/contract/team/{idx}")
 async def delete_team_member(session_id: str, idx: int):
     """Delete a team member by index."""
     session = await store.get_session(session_id)
@@ -776,7 +714,7 @@ async def delete_team_member(session_id: str, idx: int):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/servers", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/servers", response_class=JSONResponse)
 async def add_server(session_id: str, payload: dict[str, Any]):
     """Add a server/infrastructure entry to the contract."""
     session = await store.get_session(session_id)
@@ -798,18 +736,14 @@ async def add_server(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "id": server.id}, status_code=201)
 
 
-@app.put("/api/sessions/{session_id}/contract/servers/{server_id}", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/contract/servers/{server_id}", response_class=JSONResponse)
 async def update_server(session_id: str, server_id: str, payload: dict[str, Any]):
     """Update a server entry."""
     session = await store.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    server = None
-    for s in session.contract.servers:
-        if s.id == server_id:
-            server = s
-            break
+    server = next((s for s in session.contract.servers if s.id == server_id), None)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
 
@@ -834,7 +768,7 @@ async def update_server(session_id: str, server_id: str, payload: dict[str, Any]
     return JSONResponse(content={"ok": True})
 
 
-@app.delete("/api/sessions/{session_id}/contract/servers/{server_id}")
+@router.delete("/api/sessions/{session_id}/contract/servers/{server_id}")
 async def delete_server(session_id: str, server_id: str):
     """Delete a server entry by ID."""
     session = await store.get_session(session_id)
@@ -855,7 +789,7 @@ async def delete_server(session_id: str, server_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/roles", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/roles", response_class=JSONResponse)
 async def add_role(session_id: str, payload: dict[str, Any]):
     """Add a role/access entry to the contract."""
     session = await store.get_session(session_id)
@@ -875,7 +809,7 @@ async def add_role(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "id": role.id}, status_code=201)
 
 
-@app.put("/api/sessions/{session_id}/contract/roles/{role_id}", response_class=JSONResponse)
+@router.put("/api/sessions/{session_id}/contract/roles/{role_id}", response_class=JSONResponse)
 async def update_role(session_id: str, role_id: str, payload: dict[str, Any]):
     """Update a role entry."""
     session = await store.get_session(session_id)
@@ -899,7 +833,7 @@ async def update_role(session_id: str, role_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True})
 
 
-@app.delete("/api/sessions/{session_id}/contract/roles/{role_id}")
+@router.delete("/api/sessions/{session_id}/contract/roles/{role_id}")
 async def delete_role(session_id: str, role_id: str):
     """Delete a role entry by ID."""
     session = await store.get_session(session_id)
@@ -920,7 +854,7 @@ async def delete_role(session_id: str, role_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/custom-properties", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/custom-properties", response_class=JSONResponse)
 async def add_custom_property(session_id: str, payload: dict[str, Any]):
     """Add a custom property key-value pair to the contract."""
     session = await store.get_session(session_id)
@@ -936,7 +870,7 @@ async def add_custom_property(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "id": prop.id}, status_code=201)
 
 
-@app.delete("/api/sessions/{session_id}/contract/custom-properties/{prop_id}")
+@router.delete("/api/sessions/{session_id}/contract/custom-properties/{prop_id}")
 async def delete_custom_property(session_id: str, prop_id: str):
     """Delete a custom property by ID."""
     session = await store.get_session(session_id)
@@ -959,7 +893,7 @@ async def delete_custom_property(session_id: str, prop_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/comments", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/comments", response_class=JSONResponse)
 async def add_comment(session_id: str, payload: dict[str, Any]):
     """Add a comment to the session."""
     session = await store.get_session(session_id)
@@ -980,7 +914,7 @@ async def add_comment(session_id: str, payload: dict[str, Any]):
     return JSONResponse(content={"ok": True, "id": comment.id}, status_code=201)
 
 
-@app.get("/api/sessions/{session_id}/comments", response_class=JSONResponse)
+@router.get("/api/sessions/{session_id}/comments", response_class=JSONResponse)
 async def get_comments(session_id: str, stage: Optional[str] = Query(None)):
     """Get comments for a session, optionally filtered by stage."""
     session = await store.get_session(session_id)
@@ -998,7 +932,7 @@ async def get_comments(session_id: str, stage: Optional[str] = Query(None)):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/sessions/{session_id}/contract/yaml")
+@router.get("/api/sessions/{session_id}/contract/yaml")
 async def get_yaml(session_id: str):
     """Get the ODCS v3.1.0 YAML preview."""
     session = await store.get_session(session_id)
@@ -1009,7 +943,7 @@ async def get_yaml(session_id: str):
     return Response(content=yaml_str, media_type="text/yaml")
 
 
-@app.get("/api/sessions/{session_id}/contract/download")
+@router.get("/api/sessions/{session_id}/contract/download")
 async def download_yaml(session_id: str):
     """Download the ODCS YAML as a file."""
     session = await store.get_session(session_id)
@@ -1030,14 +964,14 @@ async def download_yaml(session_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/dbt/status", response_class=JSONResponse)
+@router.get("/api/dbt/status", response_class=JSONResponse)
 async def dbt_status():
     """Check if dbt Cloud credentials are configured."""
     from app.ddlc import dbt_generator
     return JSONResponse(content={"configured": dbt_generator.is_configured()})
 
 
-@app.get("/api/sessions/{session_id}/contract/dbt/preview", response_class=JSONResponse)
+@router.get("/api/sessions/{session_id}/contract/dbt/preview", response_class=JSONResponse)
 async def dbt_preview(session_id: str):
     """Return {relative_path: content} preview of the generated dbt project."""
     from app.ddlc import dbt_generator
@@ -1048,7 +982,7 @@ async def dbt_preview(session_id: str):
     return JSONResponse(content={"files": files})
 
 
-@app.get("/api/sessions/{session_id}/contract/dbt/download")
+@router.get("/api/sessions/{session_id}/contract/dbt/download")
 async def dbt_download(session_id: str):
     """Download the generated dbt project as a ZIP archive."""
     import re as _re
@@ -1065,7 +999,7 @@ async def dbt_download(session_id: str):
     )
 
 
-@app.post("/api/sessions/{session_id}/contract/dbt/trigger", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/dbt/trigger", response_class=JSONResponse)
 async def dbt_cloud_trigger(session_id: str):
     """Trigger a dbt Cloud job run for this contract."""
     from app.ddlc import dbt_generator
@@ -1086,21 +1020,19 @@ async def dbt_cloud_trigger(session_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/atlan/status", response_class=JSONResponse)
+@router.get("/api/atlan/status", response_class=JSONResponse)
 async def atlan_status():
     """Check if Atlan credentials are configured."""
     from app.ddlc import atlan_assets
     return JSONResponse(content={"configured": atlan_assets.is_configured()})
 
 
-@app.get("/api/atlan/search-tables", response_class=JSONResponse)
+@router.get("/api/atlan/search-tables", response_class=JSONResponse)
 async def search_atlan_tables(q: str = Query(""), asset_type: str = Query("Table"), limit: int = Query(20)):
     """Search Atlan for tables/views matching a query."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
-
     try:
         results = atlan_assets.search_assets(query=q, asset_type=asset_type, limit=limit)
         return JSONResponse(content=results)
@@ -1108,14 +1040,12 @@ async def search_atlan_tables(q: str = Query(""), asset_type: str = Query("Table
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/atlan/table-columns", response_class=JSONResponse)
+@router.get("/api/atlan/table-columns", response_class=JSONResponse)
 async def get_atlan_table_columns(qualified_name: str = Query(...)):
     """Fetch columns for a specific table from Atlan."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
-
     try:
         columns = atlan_assets.get_table_columns(qualified_name=qualified_name)
         return JSONResponse(content=columns)
@@ -1123,14 +1053,12 @@ async def get_atlan_table_columns(qualified_name: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/atlan/search-products", response_class=JSONResponse)
+@router.get("/api/atlan/search-products", response_class=JSONResponse)
 async def search_atlan_products(q: str = Query("")):
     """Search Atlan for data products."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
-
     try:
         results = atlan_assets.search_data_products(query=q)
         return JSONResponse(content=results)
@@ -1138,14 +1066,12 @@ async def search_atlan_products(q: str = Query("")):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/atlan/search-domains", response_class=JSONResponse)
+@router.get("/api/atlan/search-domains", response_class=JSONResponse)
 async def search_atlan_domains(q: str = Query("")):
     """Search Atlan for data domains."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
-
     try:
         results = atlan_assets.search_data_domains(query=q)
         return JSONResponse(content=results)
@@ -1153,14 +1079,12 @@ async def search_atlan_domains(q: str = Query("")):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/atlan/search-users", response_class=JSONResponse)
+@router.get("/api/atlan/search-users", response_class=JSONResponse)
 async def search_atlan_users(q: str = Query(""), limit: int = Query(20)):
     """Search Atlan users by email/username fragment for the approver picker."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
-
     try:
         results = atlan_assets.search_users(query=q, limit=limit)
         return JSONResponse(content={"users": results})
@@ -1168,7 +1092,7 @@ async def search_atlan_users(q: str = Query(""), limit: int = Query(20)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/atlan/search-connections", response_class=JSONResponse)
+@router.get("/api/atlan/search-connections", response_class=JSONResponse)
 async def search_atlan_connections(q: str = Query(""), connector: str = Query(""), limit: int = Query(20)):
     """Search Atlan connections by name/connector type for the Server connection picker."""
     from app.ddlc import atlan_assets
@@ -1186,7 +1110,7 @@ async def search_atlan_connections(q: str = Query(""), connector: str = Query(""
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/sessions/{session_id}/contract/objects/{obj_name}/sources", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/objects/{obj_name}/sources", response_class=JSONResponse)
 async def add_source_table(session_id: str, obj_name: str, payload: dict[str, Any]):
     """Add a source table to a schema object (for lineage tracking)."""
     session = await store.get_session(session_id)
@@ -1194,8 +1118,6 @@ async def add_source_table(session_id: str, obj_name: str, payload: dict[str, An
         raise HTTPException(status_code=404, detail="Session not found")
 
     obj = _find_object(session, obj_name)
-
-    # Accept cached columns from the payload (e.g., from mock data or frontend cache)
     cached_columns = payload.get("columns") or None
 
     source = SourceTable(
@@ -1208,17 +1130,14 @@ async def add_source_table(session_id: str, obj_name: str, payload: dict[str, An
         columns=cached_columns,
     )
 
-    # If no cached columns and Atlan is configured, fetch them
     if not source.columns and source.qualified_name:
         try:
             from app.ddlc import atlan_assets
-
             if atlan_assets.is_configured():
                 source.columns = atlan_assets.get_table_columns(source.qualified_name)
         except Exception:
-            pass  # Non-critical — columns can be fetched later
+            pass
 
-    # Avoid duplicates
     if any(s.qualified_name == source.qualified_name and source.qualified_name for s in obj.source_tables):
         raise HTTPException(status_code=409, detail=f"Source '{source.name}' already added")
 
@@ -1227,7 +1146,7 @@ async def add_source_table(session_id: str, obj_name: str, payload: dict[str, An
     return JSONResponse(content={"ok": True}, status_code=201)
 
 
-@app.get("/api/sessions/{session_id}/contract/objects/{obj_name}/source-columns", response_class=JSONResponse)
+@router.get("/api/sessions/{session_id}/contract/objects/{obj_name}/source-columns", response_class=JSONResponse)
 async def get_source_columns(session_id: str, obj_name: str):
     """Get columns for all source tables of a schema object (target table)."""
     session = await store.get_session(session_id)
@@ -1242,11 +1161,9 @@ async def get_source_columns(session_id: str, obj_name: str):
         elif src.qualified_name:
             try:
                 from app.ddlc import atlan_assets
-
                 if atlan_assets.is_configured():
                     cols = atlan_assets.get_table_columns(src.qualified_name)
                     result[src.name] = cols
-                    # Cache for next time
                     src.columns = cols
                 else:
                     result[src.name] = []
@@ -1254,12 +1171,11 @@ async def get_source_columns(session_id: str, obj_name: str):
                 result[src.name] = []
         else:
             result[src.name] = []
-    # Persist any newly cached columns
     await store.save_session(session)
     return JSONResponse(content=result)
 
 
-@app.post("/api/sessions/{session_id}/contract/objects/{obj_name}/map-columns", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/objects/{obj_name}/map-columns", response_class=JSONResponse)
 async def map_source_columns(session_id: str, obj_name: str, payload: dict[str, Any]):
     """Batch-create target columns from selected source columns with lineage pre-populated."""
     session = await store.get_session(session_id)
@@ -1279,10 +1195,8 @@ async def map_source_columns(session_id: str, obj_name: str, payload: dict[str, 
             skipped += 1
             continue
 
-        # Skip if column already exists
         existing = [p for p in obj.properties if p.name == target_name]
         if existing:
-            # Add lineage to existing column if not already present
             prop = existing[0]
             source_entry = ColumnSource(
                 source_table=m.get("source_table", ""),
@@ -1291,7 +1205,6 @@ async def map_source_columns(session_id: str, obj_name: str, payload: dict[str, 
                 transform_logic=m.get("transform_logic") or None,
                 transform_description=m.get("transform_description") or None,
             )
-            # Avoid duplicate lineage entries
             if not any(
                 s.source_table == source_entry.source_table and s.source_column == source_entry.source_column
                 for s in prop.sources
@@ -1300,7 +1213,6 @@ async def map_source_columns(session_id: str, obj_name: str, payload: dict[str, 
             skipped += 1
             continue
 
-        # Resolve logical type
         logical_type_str = m.get("logical_type", "string").lower()
         try:
             logical_type = LogicalType(logical_type_str)
@@ -1333,7 +1245,7 @@ async def map_source_columns(session_id: str, obj_name: str, payload: dict[str, 
     )
 
 
-@app.delete("/api/sessions/{session_id}/contract/objects/{obj_name}/sources/{idx}")
+@router.delete("/api/sessions/{session_id}/contract/objects/{obj_name}/sources/{idx}")
 async def delete_source_table(session_id: str, obj_name: str, idx: int):
     """Remove a source table by index."""
     session = await store.get_session(session_id)
@@ -1349,7 +1261,7 @@ async def delete_source_table(session_id: str, obj_name: str, idx: int):
     return JSONResponse(content={"ok": True})
 
 
-@app.post(
+@router.post(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties/{prop_name}/sources",
     response_class=JSONResponse,
 )
@@ -1374,7 +1286,7 @@ async def add_column_source(session_id: str, obj_name: str, prop_name: str, payl
     return JSONResponse(content={"ok": True}, status_code=201)
 
 
-@app.put(
+@router.put(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties/{prop_name}/sources/{idx}",
     response_class=JSONResponse,
 )
@@ -1406,7 +1318,7 @@ async def update_column_source(session_id: str, obj_name: str, prop_name: str, i
     return JSONResponse(content={"ok": True})
 
 
-@app.delete(
+@router.delete(
     "/api/sessions/{session_id}/contract/objects/{obj_name}/properties/{prop_name}/sources/{idx}",
 )
 async def delete_column_source(session_id: str, obj_name: str, prop_name: str, idx: int):
@@ -1426,16 +1338,10 @@ async def delete_column_source(session_id: str, obj_name: str, prop_name: str, i
     return JSONResponse(content={"ok": True})
 
 
-@app.post("/api/sessions/{session_id}/contract/objects/{obj_name}/import-from-atlan", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/objects/{obj_name}/import-from-atlan", response_class=JSONResponse)
 async def import_columns_from_atlan(session_id: str, obj_name: str, payload: dict[str, Any]):
-    """
-    Import columns from an Atlan table into the schema object as lineage sources.
-
-    This fetches the source table's columns and adds them as properties on the
-    target object, with lineage pointing back to the source.
-    """
+    """Import columns from an Atlan table into the schema object as lineage sources."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
 
@@ -1444,7 +1350,6 @@ async def import_columns_from_atlan(session_id: str, obj_name: str, payload: dic
         raise HTTPException(status_code=404, detail="Session not found")
 
     obj = _find_object(session, obj_name)
-
     source_qualified_name = payload.get("qualified_name", "")
     source_name = payload.get("source_name", "")
     if not source_qualified_name:
@@ -1460,7 +1365,6 @@ async def import_columns_from_atlan(session_id: str, obj_name: str, payload: dic
     for col in columns:
         col_name = col["name"]
         if col_name in existing_names:
-            # Add as lineage source to existing property
             for prop in obj.properties:
                 if prop.name == col_name:
                     prop.sources.append(ColumnSource(
@@ -1470,7 +1374,6 @@ async def import_columns_from_atlan(session_id: str, obj_name: str, payload: dic
                     ))
                     break
         else:
-            # Create new property with lineage
             prop = SchemaProperty(
                 name=col_name,
                 logical_type=LogicalType(col["logical_type"]),
@@ -1491,16 +1394,10 @@ async def import_columns_from_atlan(session_id: str, obj_name: str, payload: dic
     return JSONResponse(content={"ok": True, "imported": imported})
 
 
-@app.post("/api/sessions/{session_id}/contract/objects/bulk-import-from-atlan", response_class=JSONResponse)
+@router.post("/api/sessions/{session_id}/contract/objects/bulk-import-from-atlan", response_class=JSONResponse)
 async def bulk_import_from_atlan(session_id: str, payload: dict[str, Any]):
-    """
-    Bulk-create schema objects from Atlan tables.
-
-    For each table in the cart, creates a SchemaObject with columns fetched
-    from Atlan and lineage pointing back to the source table/columns.
-    """
+    """Bulk-create schema objects from Atlan tables."""
     from app.ddlc import atlan_assets
-
     if not atlan_assets.is_configured():
         raise HTTPException(status_code=503, detail="Atlan credentials not configured")
 
@@ -1521,12 +1418,10 @@ async def bulk_import_from_atlan(session_id: str, payload: dict[str, Any]):
         tbl_name = tbl.get("name", "")
         qualified_name = tbl.get("qualified_name", "")
 
-        # Skip duplicates (case-insensitive)
         if tbl_name.upper() in existing_names:
             skipped_names.append(tbl_name)
             continue
 
-        # Create the schema object
         obj = SchemaObject(
             name=tbl_name,
             physical_name=qualified_name or None,
@@ -1541,7 +1436,6 @@ async def bulk_import_from_atlan(session_id: str, payload: dict[str, Any]):
             )],
         )
 
-        # Fetch columns from Atlan
         cols_imported = 0
         if qualified_name:
             try:
@@ -1562,7 +1456,7 @@ async def bulk_import_from_atlan(session_id: str, payload: dict[str, Any]):
                     obj.properties.append(prop)
                     cols_imported += 1
             except Exception:
-                pass  # Table added without columns on fetch failure
+                pass
 
         session.contract.schema_objects.append(obj)
         existing_names.add(tbl_name.upper())
@@ -1630,15 +1524,12 @@ def _validate_stage_transition(session: DDLCSession, target: DDLCStage) -> str |
     """Validate a stage transition. Returns an error message or None if valid."""
     current = session.current_stage
 
-    # Terminal states
     if current in (DDLCStage.ACTIVE, DDLCStage.REJECTED):
         return f"Cannot transition from terminal stage '{current.value}'"
 
-    # Reject is always allowed (except from terminal)
     if target == DDLCStage.REJECTED:
         return None
 
-    # Must follow stage order
     if current not in STAGE_ORDER or target not in STAGE_ORDER:
         return f"Invalid transition: {current.value} -> {target.value}"
 
@@ -1648,9 +1539,8 @@ def _validate_stage_transition(session: DDLCSession, target: DDLCStage) -> str |
     if target_idx != current_idx + 1:
         return f"Can only advance one stage at a time. Current: {current.value}, requested: {target.value}"
 
-    # Stage-specific gates
     if target == DDLCStage.DISCOVERY:
-        pass  # Always allowed from request
+        pass
 
     elif target == DDLCStage.SPECIFICATION:
         discovery_comments = [c for c in session.comments if c.stage == DDLCStage.DISCOVERY]
@@ -1670,16 +1560,6 @@ def _validate_stage_transition(session: DDLCSession, target: DDLCStage) -> str |
             return "At least one review comment is required before approval"
 
     elif target == DDLCStage.ACTIVE:
-        pass  # Approval -> Active is allowed if we got here
+        pass
 
     return None
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    print("\n  DDLC — Data Contract Development Lifecycle")
-    print("  http://localhost:8002\n")
-    uvicorn.run(app, host="0.0.0.0", port=8002)

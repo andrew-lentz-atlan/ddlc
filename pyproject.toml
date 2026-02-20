@@ -1,7 +1,7 @@
 [project]
-name = "hello-world-app"
+name = "ddlc-app"
 version = "0.1.0"
-description = "Hello World sample app built using Atlan Application SDK"
+description = "Data Contract Lifecycle (DDLC) — Atlan Application SDK app for end-to-end ODCS v3.1.0 contract management"
 authors = [{ name = "Atlan App Team", email = "connect@atlan.com" }]
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
@@ -11,6 +11,8 @@ dependencies = [
     "poethepoet",
     "pyarrow>=23.0.0",
     "python-dotenv>=1.2.1",
+    "pyyaml>=6.0",
+    "pyatlan>=5.0.0",
 ]
 
 [dependency-groups]
@@ -22,10 +24,16 @@ dev = [
 ]
 
 [tool.poe.tasks]
+# Start Dapr sidecar (required for distributed state + pubsub)
 start-dapr = "dapr run --enable-api-logging --log-level debug --app-id app --app-port 3000 --scheduler-host-address '' --placement-host-address '' --max-body-size 1024Mi --dapr-http-port 3500 --dapr-grpc-port 50001 --resources-path components"
+# Start Temporal dev server (SQLite backend for local dev)
 start-temporal = "temporal server start-dev --db-filename ./temporal.db"
+# Start both infrastructure components
 start-deps.shell = "poe start-dapr & poe start-temporal &"
+# Kill infrastructure processes
 stop-deps.shell = "lsof -ti:3000,3500,7233,50001 | xargs kill -9 2>/dev/null || true"
+# Run DDLC app (after poe start-deps)
+dev = "uv run python main.py"
 
 [tool.poe.tasks.download-components]
 interpreter = "python"
