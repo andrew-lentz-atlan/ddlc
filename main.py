@@ -43,9 +43,11 @@ _STATIC_DIR = _FRONTEND_DIR / "static"
 # Covers the Atlan frontend dev server (Vite default port) and common
 # alternatives.  In production this would be locked to the tenant origin.
 _ALLOWED_ORIGINS = [
+    "http://localhost:3333",  # Atlan frontend (actual dev port)
     "http://localhost:5173",
     "http://localhost:3000",
     "http://localhost:8080",
+    "http://127.0.0.1:3333",
     "http://127.0.0.1:5173",
 ]
 
