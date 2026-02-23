@@ -69,7 +69,7 @@ from app.ddlc.models import (
 # ---------------------------------------------------------------------------
 
 _now = datetime.now(timezone.utc)
-_BASE_URL = os.getenv("ATLAN_BASE_URL", "https://rko-hackaton.atlan.com").rstrip("/")
+_BASE_URL = os.getenv("ATLAN_BASE_URL", "").rstrip("/")
 
 # Demo connection — "Demo" Snowflake in the hackathon tenant
 _DEMO_CONN = "default/snowflake/1770312446"
@@ -478,7 +478,7 @@ def _build_wwi_fact_orders() -> DDLCSession:
             Server(
                 type=ServerType.SNOWFLAKE,
                 environment="prod",
-                account="rko-hackaton",
+                account=os.getenv("ATLAN_SNOWFLAKE_ACCOUNT", "your-account"),
                 database=_DEMO_DB,
                 schema_name=_GOLD,
                 description="Demo Snowflake — Wide World Importers Gold layer.",
@@ -910,7 +910,7 @@ def _build_wwi_dim_customer() -> DDLCSession:
             Server(
                 type=ServerType.SNOWFLAKE,
                 environment="prod",
-                account="rko-hackaton",
+                account=os.getenv("ATLAN_SNOWFLAKE_ACCOUNT", "your-account"),
                 database=_DEMO_DB,
                 schema_name=_GOLD,
                 description="Demo Snowflake — Wide World Importers Gold layer.",
@@ -1151,7 +1151,7 @@ def _build_wwi_dim_stockitem() -> DDLCSession:
             Server(
                 type=ServerType.SNOWFLAKE,
                 environment="prod",
-                account="rko-hackaton",
+                account=os.getenv("ATLAN_SNOWFLAKE_ACCOUNT", "your-account"),
                 database=_DEMO_DB,
                 schema_name=_GOLD,
                 description="Demo Snowflake — Wide World Importers Gold layer.",
@@ -1772,7 +1772,7 @@ def _build_wwi_daily_sales_summary() -> DDLCSession:
             Server(
                 type=ServerType.SNOWFLAKE,
                 environment="prod",
-                account="rko-hackaton",
+                account=os.getenv("ATLAN_SNOWFLAKE_ACCOUNT", "your-account"),
                 database=_DEMO_DB,
                 schema_name=_GOLD,
                 description="Demo Snowflake — Wide World Importers Gold layer.",
