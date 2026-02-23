@@ -92,6 +92,9 @@ class DDLCServer(APIServer):
             response.headers["Content-Security-Policy"] = (
                 f"frame-ancestors 'self' {csp_origins}"
             )
+            # Disable caching for all responses in dev so JS/CSS changes
+            # are always picked up immediately without version bumps
+            response.headers["Cache-Control"] = "no-store"
             return response
 
     def register_routers(self) -> None:
