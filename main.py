@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any, List
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.activities import DDLCActivities
@@ -38,6 +39,16 @@ _HERE = Path(__file__).parent
 _FRONTEND_DIR = _HERE / "app" / "ddlc" / "frontend"
 _STATIC_DIR = _FRONTEND_DIR / "static"
 
+# Origins allowed to embed DDLC in an iframe.
+# Covers the Atlan frontend dev server (Vite default port) and common
+# alternatives.  In production this would be locked to the tenant origin.
+_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:5173",
+]
+
 
 # ---------------------------------------------------------------------------
 # Custom server — extends SDK APIServer with DDLC frontend + REST API
@@ -49,10 +60,39 @@ class DDLCServer(APIServer):
     Extends the SDK's APIServer with:
       1. DDLC's full REST API (50+ endpoints via APIRouter from server.py)
       2. DDLC's static frontend (HTML pages + CSS/JS)
+      3. CORS + iframe embedding for the Atlan frontend dev server
 
     All SDK infrastructure (observability, workflow triggers, dapr pubsub,
     JWT auth) is inherited unchanged from APIServer.
     """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        # Allow the Atlan frontend (localhost:5173) to make cross-origin
+        # requests and embed DDLC in an iframe.
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=_ALLOWED_ORIGINS,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # Remove X-Frame-Options restriction so browsers allow iframe embedding.
+        # Replace with a CSP frame-ancestors directive that restricts to our
+        # known origins only.
+        @self.app.middleware("http")
+        async def iframe_headers(request: Request, call_next) -> Response:
+            response = await call_next(request)
+            # MutableHeaders uses del not pop — guard in case header absent
+            if "x-frame-options" in response.headers:
+                del response.headers["x-frame-options"]
+            csp_origins = " ".join(_ALLOWED_ORIGINS)
+            response.headers["Content-Security-Policy"] = (
+                f"frame-ancestors 'self' {csp_origins}"
+            )
+            return response
 
     def register_routers(self) -> None:
         # 1. Include DDLC REST API router (all /api/* endpoints)
