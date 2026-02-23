@@ -2,7 +2,7 @@
 # =============================================================================
 # DDLC Demo — Start Everything
 # =============================================================================
-# Starts: Dapr, Temporal, DDLC app (port 8000), Atlan frontend (port 5173)
+# Starts: Dapr, Temporal, DDLC app (port 8000), Atlan frontend (port 3333)
 #
 # Usage:
 #   ./demo-start.sh          # start everything
@@ -26,7 +26,7 @@ FRONTEND_DIR="$SCRIPT_DIR/atlan-frontend"
 DAPR_PORT=3500
 TEMPORAL_PORT=7233
 APP_PORT=8000
-FRONTEND_PORT=5173
+FRONTEND_PORT=3333
 
 # Colors
 RED='\033[0;31m'
