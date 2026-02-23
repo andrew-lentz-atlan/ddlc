@@ -1,4 +1,60 @@
 /**
+ * Atlan iframe handshake — handles the postMessage protocol used by
+ * SecureExternalApp.vue when DDLC is embedded as an external nav tab.
+ *
+ * Protocol:
+ *   1. Atlan sends  → { type: 'ATLAN_HANDSHAKE', payload: { appId } }
+ *   2. DDLC replies → { type: 'IFRAME_READY' }
+ *   3. Atlan sends  → { type: 'ATLAN_AUTH_CONTEXT', payload: { token, user, … } }
+ *   4. DDLC stores the token for future API calls
+ *   5. Atlan may resend ATLAN_AUTH_CONTEXT periodically to refresh the token
+ *   6. On logout Atlan sends → { type: 'ATLAN_LOGOUT' }
+ */
+;(function AtlanHandshake() {
+    let _atlanToken = null;
+    let _atlanUser  = null;
+
+    window.__atlan = {
+        getToken: () => _atlanToken,
+        getUser:  () => _atlanUser,
+    };
+
+    window.addEventListener('message', function(event) {
+        // Only handle messages from the parent window (Atlan frontend)
+        if (event.source !== window.parent) return;
+
+        const data = event.data;
+        if (!data || typeof data.type !== 'string') return;
+
+        switch (data.type) {
+            case 'ATLAN_HANDSHAKE':
+                // Respond to let Atlan know the iframe is alive
+                event.source.postMessage({ type: 'IFRAME_READY' }, event.origin);
+                break;
+
+            case 'ATLAN_AUTH_CONTEXT':
+                // Store auth context for use in API calls
+                if (data.payload && data.payload.token) {
+                    _atlanToken = data.payload.token;
+                    _atlanUser  = data.payload.user || null;
+                }
+                break;
+
+            case 'ATLAN_LOGOUT':
+                _atlanToken = null;
+                _atlanUser  = null;
+                break;
+        }
+    });
+
+    // Let Atlan know immediately if it already sent a handshake before our
+    // listener was registered (race condition on slow page loads)
+    if (window.parent !== window) {
+        window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
+    }
+})();
+
+/**
  * DDLC — Dashboard and Request Form logic.
  */
 const DDLC = {
