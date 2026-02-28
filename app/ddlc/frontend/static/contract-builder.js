@@ -1475,10 +1475,13 @@ const ContractApp = {
         { value: 'sql_rule', label: 'SQL Rule' },
         { value: 'referential_integrity', label: 'Ref Integrity' },
     ],
-    _QUALITY_ENGINES: ['', 'monte-carlo', 'great-expectations', 'soda', 'dbt'],
+    _QUALITY_ENGINES: ['', 'monte-carlo', 'great-expectations', 'soda', 'dbt', 'atlan-dqs'],
     _QUALITY_SEVERITIES: ['', 'critical', 'high', 'medium', 'low'],
     _QUALITY_TYPES: ['text', 'library', 'sql', 'custom'],
     _SEVERITY_COLORS: { critical: '#ef4444', high: '#f59e0b', medium: '#3b82f6', low: '#6b7280' },
+    _DQS_RULE_TYPES: ['ROW_COUNT', 'NULL_COUNT', 'FRESHNESS', 'STRING_LENGTH', 'REGEX_MATCH', 'VALID_STRING_VALUES', 'CUSTOM_SQL'],
+    _DQS_THRESHOLD_UNITS: ['DAYS', 'HOURS', 'PERCENTAGE'],
+    _DQS_ALERT_PRIORITIES: ['URGENT', 'NORMAL', 'LOW'],
 
     _getAllColumns() {
         const cols = [];
@@ -1524,7 +1527,9 @@ const ContractApp = {
                     <div class="quality-card-meta">
                         ${q.column ? `<span class="quality-meta-tag">&#128204; ${this.esc(q.column)}</span>` : ''}
                         ${q.schedule ? `<span class="quality-meta-tag">&#128339; ${this.esc(q.schedule)}</span>` : ''}
-                        ${q.engine ? `<span class="quality-meta-tag">&#9881; ${this.esc(q.engine)}</span>` : ''}
+                        ${q.engine && q.engine !== 'atlan-dqs' ? `<span class="quality-meta-tag">&#9881; ${this.esc(q.engine)}</span>` : ''}
+                        ${q.engine === 'atlan-dqs' ? `<span class="col-badge" style="background:rgba(20,184,166,0.18); color:#0d9488; font-size:0.72rem;">Atlan DQS${q.dqs_rule_type ? ' · ' + q.dqs_rule_type : ''}</span>` : ''}
+                        ${q.engine === 'atlan-dqs' && q.dqs_pushed ? `<span class="col-badge" style="background:rgba(16,185,129,0.2); color:var(--success); font-size:0.72rem;">&#10003; Pushed</span>` : ''}
                     </div>
                     <div class="quality-card-actions">
                         <button class="btn-icon" onclick="event.stopPropagation(); ContractApp.deleteQuality('${q.id}')">&#128465;</button>
@@ -1575,7 +1580,7 @@ const ContractApp = {
                         </select>
                     </div>
                     <div><label>Engine</label>
-                        <select id="editQualEngine-${q.id}">
+                        <select id="editQualEngine-${q.id}" onchange="ContractApp.onQualEngineChange('${q.id}')">
                             ${this._QUALITY_ENGINES.map(e => `<option value="${e}" ${(q.engine || '') === e ? 'selected' : ''}>${e || 'None'}</option>`).join('')}
                         </select>
                     </div>
@@ -1597,6 +1602,37 @@ const ContractApp = {
                 <div id="qualQueryRow-${q.id}" style="${showQuery ? '' : 'display:none;'}">
                     <label>SQL Query</label>
                     <textarea id="editQualQuery-${q.id}" rows="3" style="font-family:var(--font-mono,monospace); font-size:0.82rem;">${this.esc(q.query || '')}</textarea>
+                </div>
+
+                <div id="editDqsSubform-${q.id}" style="${(q.engine || '') === 'atlan-dqs' ? '' : 'display:none;'}" class="dqs-subform">
+                    <div style="font-size:0.78rem; font-weight:600; color:#0d9488; margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid rgba(20,184,166,0.3);">&#9632; Atlan DQS Rule Configuration</div>
+                    <div class="inline-form-row three-col">
+                        <div><label>Rule Type</label>
+                            <select id="editDqsRuleType-${q.id}" onchange="ContractApp.onDqsRuleTypeChange('${q.id}')">
+                                ${this._DQS_RULE_TYPES.map(r => `<option value="${r}" ${(q.dqs_rule_type || '') === r ? 'selected' : ''}>${r}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div><label>Alert Priority</label>
+                            <select id="editDqsAlertPriority-${q.id}">
+                                <option value="">None</option>
+                                ${this._DQS_ALERT_PRIORITIES.map(p => `<option value="${p}" ${(q.dqs_alert_priority || '') === p ? 'selected' : ''}>${p}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div><label>Threshold Value</label>
+                            <input type="number" id="editDqsThresholdValue-${q.id}" value="${q.dqs_threshold_value != null ? q.dqs_threshold_value : ''}" step="any" placeholder="e.g., 1000">
+                        </div>
+                    </div>
+                    <div id="editDqsUnitRow-${q.id}" style="${(q.dqs_rule_type || '') === 'FRESHNESS' ? '' : 'display:none;'}">
+                        <label>Threshold Unit</label>
+                        <select id="editDqsThresholdUnit-${q.id}">
+                            <option value="">None</option>
+                            ${this._DQS_THRESHOLD_UNITS.map(u => `<option value="${u}" ${(q.dqs_threshold_unit || '') === u ? 'selected' : ''}>${u}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="editDqsSqlRow-${q.id}" style="${(q.dqs_rule_type || '') === 'CUSTOM_SQL' ? '' : 'display:none;'}">
+                        <label>Custom SQL</label>
+                        <textarea id="editDqsCustomSql-${q.id}" rows="3" style="font-family:var(--font-mono,monospace); font-size:0.82rem;" placeholder="SELECT COUNT(*) FROM table WHERE ...">${this.esc(q.dqs_custom_sql || '')}</textarea>
+                    </div>
                 </div>
 
                 <div class="inline-form-row three-col">
@@ -1632,12 +1668,30 @@ const ContractApp = {
         }
     },
 
+    onQualEngineChange(checkId) {
+        const engine = document.getElementById(`editQualEngine-${checkId}`)?.value;
+        const dqsSubform = document.getElementById(`editDqsSubform-${checkId}`);
+        if (dqsSubform) dqsSubform.style.display = engine === 'atlan-dqs' ? '' : 'none';
+        if (engine === 'atlan-dqs') this.onDqsRuleTypeChange(checkId);
+    },
+
+    onDqsRuleTypeChange(checkId) {
+        const ruleType = document.getElementById(`editDqsRuleType-${checkId}`)?.value;
+        const unitRow = document.getElementById(`editDqsUnitRow-${checkId}`);
+        const sqlRow = document.getElementById(`editDqsSqlRow-${checkId}`);
+        if (unitRow) unitRow.style.display = ruleType === 'FRESHNESS' ? '' : 'none';
+        if (sqlRow) sqlRow.style.display = ruleType === 'CUSTOM_SQL' ? '' : 'none';
+    },
+
     async saveQualityEdits(checkId) {
         const desc = document.getElementById(`editQualDesc-${checkId}`)?.value.trim();
         if (!desc) return DDLC.toast.show('Description is required', 'error');
 
         const gtRaw = document.getElementById(`editQualGT-${checkId}`)?.value;
         const ltRaw = document.getElementById(`editQualLT-${checkId}`)?.value;
+
+        const engine = document.getElementById(`editQualEngine-${checkId}`)?.value || null;
+        const dqsThreshRaw = document.getElementById(`editDqsThresholdValue-${checkId}`)?.value;
 
         try {
             await DDLC.api.put(`/api/sessions/${this.sessionId}/contract/quality/${checkId}`, {
@@ -1647,7 +1701,7 @@ const ContractApp = {
                 severity: document.getElementById(`editQualSeverity-${checkId}`)?.value || null,
                 method: document.getElementById(`editQualMethod-${checkId}`)?.value || null,
                 column: document.getElementById(`editQualColumn-${checkId}`)?.value || null,
-                engine: document.getElementById(`editQualEngine-${checkId}`)?.value || null,
+                engine: engine,
                 schedule: document.getElementById(`editQualSchedule-${checkId}`)?.value.trim() || null,
                 scheduler: document.getElementById(`editQualScheduler-${checkId}`)?.value.trim() || null,
                 query: document.getElementById(`editQualQuery-${checkId}`)?.value.trim() || null,
@@ -1655,6 +1709,12 @@ const ContractApp = {
                 must_be_greater_than: gtRaw !== '' && gtRaw != null ? parseFloat(gtRaw) : null,
                 must_be_less_than: ltRaw !== '' && ltRaw != null ? parseFloat(ltRaw) : null,
                 business_impact: document.getElementById(`editQualImpact-${checkId}`)?.value.trim() || null,
+                // DQS fields (only used when engine === 'atlan-dqs')
+                dqs_rule_type: engine === 'atlan-dqs' ? (document.getElementById(`editDqsRuleType-${checkId}`)?.value || null) : null,
+                dqs_threshold_value: engine === 'atlan-dqs' && dqsThreshRaw !== '' && dqsThreshRaw != null ? parseFloat(dqsThreshRaw) : null,
+                dqs_threshold_unit: engine === 'atlan-dqs' ? (document.getElementById(`editDqsThresholdUnit-${checkId}`)?.value || null) : null,
+                dqs_alert_priority: engine === 'atlan-dqs' ? (document.getElementById(`editDqsAlertPriority-${checkId}`)?.value || null) : null,
+                dqs_custom_sql: engine === 'atlan-dqs' ? (document.getElementById(`editDqsCustomSql-${checkId}`)?.value.trim() || null) : null,
             });
             DDLC.toast.show('Quality rule updated');
             this._expandedQualityId = null;
@@ -1699,7 +1759,7 @@ const ContractApp = {
                         </select>
                     </div>
                     <div><label>Engine</label>
-                        <select id="newQualEngine">
+                        <select id="newQualEngine" onchange="ContractApp.onNewQualEngineChange()">
                             ${this._QUALITY_ENGINES.map(e => `<option value="${e}">${e || 'None'}</option>`).join('')}
                         </select>
                     </div>
@@ -1721,6 +1781,37 @@ const ContractApp = {
                 <div id="newQualQueryRow" style="display:none;">
                     <label>SQL Query</label>
                     <textarea id="newQualQuery" rows="3" style="font-family:var(--font-mono,monospace); font-size:0.82rem;" placeholder="SELECT COUNT(*) FROM ..."></textarea>
+                </div>
+
+                <div id="newDqsSubform" style="display:none;" class="dqs-subform">
+                    <div style="font-size:0.78rem; font-weight:600; color:#0d9488; margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid rgba(20,184,166,0.3);">&#9632; Atlan DQS Rule Configuration</div>
+                    <div class="inline-form-row three-col">
+                        <div><label>Rule Type</label>
+                            <select id="newDqsRuleType" onchange="ContractApp.onNewDqsRuleTypeChange()">
+                                ${this._DQS_RULE_TYPES.map(r => `<option value="${r}">${r}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div><label>Alert Priority</label>
+                            <select id="newDqsAlertPriority">
+                                <option value="">None</option>
+                                ${this._DQS_ALERT_PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div><label>Threshold Value</label>
+                            <input type="number" id="newDqsThresholdValue" step="any" placeholder="e.g., 1000">
+                        </div>
+                    </div>
+                    <div id="newDqsUnitRow" style="display:none;">
+                        <label>Threshold Unit</label>
+                        <select id="newDqsThresholdUnit">
+                            <option value="">None</option>
+                            ${this._DQS_THRESHOLD_UNITS.map(u => `<option value="${u}">${u}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="newDqsSqlRow" style="display:none;">
+                        <label>Custom SQL</label>
+                        <textarea id="newDqsCustomSql" rows="3" style="font-family:var(--font-mono,monospace); font-size:0.82rem;" placeholder="SELECT COUNT(*) FROM table WHERE ..."></textarea>
+                    </div>
                 </div>
 
                 <div class="inline-form-row three-col">
@@ -1756,12 +1847,30 @@ const ContractApp = {
         }
     },
 
+    onNewQualEngineChange() {
+        const engine = document.getElementById('newQualEngine')?.value;
+        const dqsSubform = document.getElementById('newDqsSubform');
+        if (dqsSubform) dqsSubform.style.display = engine === 'atlan-dqs' ? '' : 'none';
+        if (engine === 'atlan-dqs') this.onNewDqsRuleTypeChange();
+    },
+
+    onNewDqsRuleTypeChange() {
+        const ruleType = document.getElementById('newDqsRuleType')?.value;
+        const unitRow = document.getElementById('newDqsUnitRow');
+        const sqlRow = document.getElementById('newDqsSqlRow');
+        if (unitRow) unitRow.style.display = ruleType === 'FRESHNESS' ? '' : 'none';
+        if (sqlRow) sqlRow.style.display = ruleType === 'CUSTOM_SQL' ? '' : 'none';
+    },
+
     async addQuality() {
         const desc = document.getElementById('newQualDesc').value.trim();
         if (!desc) return DDLC.toast.show('Description is required', 'error');
 
         const gtRaw = document.getElementById('newQualGT')?.value;
         const ltRaw = document.getElementById('newQualLT')?.value;
+
+        const engine = document.getElementById('newQualEngine')?.value || null;
+        const dqsThreshRaw = document.getElementById('newDqsThresholdValue')?.value;
 
         try {
             await DDLC.api.post(`/api/sessions/${this.sessionId}/contract/quality`, {
@@ -1771,7 +1880,7 @@ const ContractApp = {
                 severity: document.getElementById('newQualSeverity')?.value || null,
                 method: document.getElementById('newQualMethod')?.value || null,
                 column: document.getElementById('newQualColumn')?.value || null,
-                engine: document.getElementById('newQualEngine')?.value || null,
+                engine: engine,
                 schedule: document.getElementById('newQualSchedule')?.value.trim() || null,
                 scheduler: document.getElementById('newQualScheduler')?.value.trim() || null,
                 query: document.getElementById('newQualQuery')?.value.trim() || null,
@@ -1779,6 +1888,12 @@ const ContractApp = {
                 must_be_greater_than: gtRaw ? parseFloat(gtRaw) : null,
                 must_be_less_than: ltRaw ? parseFloat(ltRaw) : null,
                 business_impact: document.getElementById('newQualImpact')?.value.trim() || null,
+                // DQS fields (only used when engine === 'atlan-dqs')
+                dqs_rule_type: engine === 'atlan-dqs' ? (document.getElementById('newDqsRuleType')?.value || null) : null,
+                dqs_threshold_value: engine === 'atlan-dqs' && dqsThreshRaw ? parseFloat(dqsThreshRaw) : null,
+                dqs_threshold_unit: engine === 'atlan-dqs' ? (document.getElementById('newDqsThresholdUnit')?.value || null) : null,
+                dqs_alert_priority: engine === 'atlan-dqs' ? (document.getElementById('newDqsAlertPriority')?.value || null) : null,
+                dqs_custom_sql: engine === 'atlan-dqs' ? (document.getElementById('newDqsCustomSql')?.value.trim() || null) : null,
             });
             DDLC.toast.show('Quality rule added');
             await this.load();
@@ -2970,6 +3085,29 @@ const ContractApp = {
                     View in Atlan &rarr;
                 </a>
             </div>` : '';
+
+        // DQ Rules push button — visible only when DQS checks exist
+        const dqsChecks = (contract.quality_checks || []).filter(q => q.engine === 'atlan-dqs');
+        const unpushedCount = dqsChecks.filter(q => !q.dqs_pushed).length;
+        const allPushed = dqsChecks.length > 0 && unpushedCount === 0;
+        const dqsBlock = dqsChecks.length > 0 ? `
+            <div style="margin-top:16px; padding:12px 16px; background:rgba(20,184,166,0.08);
+                        border:1px solid rgba(20,184,166,0.3); border-radius:var(--radius);">
+                <div style="font-size:0.75rem; color:#0d9488; margin-bottom:8px; text-transform:uppercase; letter-spacing:.05em; font-weight:600;">
+                    Atlan DQS Rules (${dqsChecks.length} total · ${unpushedCount} pending)
+                </div>
+                ${allPushed ? `
+                    <button class="btn btn-sm" disabled style="color:var(--success); border-color:var(--success); cursor:default;">
+                        &#10003; DQ Rules Pushed to Atlan
+                    </button>
+                ` : `
+                    <button id="pushDqBtn" class="btn btn-sm" style="background:rgba(20,184,166,0.15); color:#0d9488; border-color:rgba(20,184,166,0.5);"
+                            onclick="ContractApp.pushDqRules()">
+                        Push DQ Rules to Atlan (${unpushedCount})
+                    </button>
+                `}
+            </div>` : '';
+
         return `
             <div class="section-panel" style="border-color: var(--success);">
                 <div class="section-body">
@@ -2982,11 +3120,31 @@ const ContractApp = {
                             <button class="btn btn-success" onclick="ContractApp.downloadYaml()">Download .odcs.yaml</button>
                         </div>
                         ${atlanBlock}
+                        ${dqsBlock}
                     </div>
                 </div>
             </div>
             ${this.renderReadOnlyContract()}
         `;
+    },
+
+    async pushDqRules() {
+        const btn = document.getElementById('pushDqBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
+        try {
+            const result = await DDLC.api.post(`/api/sessions/${this.sessionId}/atlan/push-dq-rules`, {});
+            const pushed = result.pushed || 0;
+            const errors = result.errors || [];
+            if (errors.length) {
+                DDLC.toast.show(`${pushed} pushed, ${errors.length} error(s): ${errors[0]}`, 'error');
+            } else {
+                DDLC.toast.show(`${pushed} DQ rule${pushed !== 1 ? 's' : ''} created in Atlan`);
+            }
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Push DQ Rules to Atlan'; }
+        }
     },
 
     // --- Rejected stage ---

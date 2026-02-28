@@ -144,6 +144,13 @@ class DDLCApplication(BaseApplication):
     when BaseApplication._setup_server() runs.
     """
 
+    async def _start_worker(self, daemon: bool = True) -> None:
+        """Skip worker startup gracefully when Temporal is not available."""
+        if self.worker is None:
+            logger.warning("Skipping worker start — Temporal not available.")
+            return
+        await super()._start_worker(daemon=daemon)
+
     async def _setup_server(
         self,
         workflow_class: Any,
@@ -185,10 +192,19 @@ async def main() -> None:
 
     app = DDLCApplication(name=APPLICATION_NAME)
 
-    # Register DDLCApprovalWorkflow + DDLCActivities with the Temporal worker
-    await app.setup_workflow(
-        workflow_and_activities_classes=[(DDLCApprovalWorkflow, DDLCActivities)],
-    )
+    # Attempt to register the Temporal worker.  Temporal is only required for
+    # the approval-workflow trigger — all other DDLC features (contract
+    # lifecycle, DQS push, REST API, UI) work without it.  If Temporal isn't
+    # running we log a warning and continue so the server still starts.
+    try:
+        await app.setup_workflow(
+            workflow_and_activities_classes=[(DDLCApprovalWorkflow, DDLCActivities)],
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Temporal not available — approval workflow disabled. "
+            f"Run 'poe start-deps' to enable it. ({exc})"
+        )
 
     # Start: worker (daemon in LOCAL mode) + server, per APPLICATION_MODE
     await app.start(workflow_class=DDLCApprovalWorkflow)

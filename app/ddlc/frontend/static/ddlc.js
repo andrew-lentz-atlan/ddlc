@@ -219,6 +219,7 @@ const DDLC = {
     // -----------------------------------------------------------------------
     request: {
         _dpTimer: null,
+        _domainTimer: null,
         _atlanConfigured: null,  // null = unknown, true/false once checked
 
         async init() {
@@ -230,16 +231,23 @@ const DDLC = {
                 this._atlanConfigured = false;
             }
 
-            const searchInput = document.getElementById('data_product_search');
-            if (!searchInput) return;
-
-            if (!this._atlanConfigured) {
-                // Fall back to freeform text — repurpose the visible input
-                searchInput.placeholder = 'e.g., Customer Analytics';
-                // Keep hidden + visible in sync so submit picks up the value
-                searchInput.addEventListener('input', () => {
+            // Data Product fallback: freeform text when Atlan not configured
+            const dpSearchInput = document.getElementById('data_product_search');
+            if (dpSearchInput && !this._atlanConfigured) {
+                dpSearchInput.placeholder = 'e.g., Customer Analytics';
+                dpSearchInput.addEventListener('input', () => {
                     const hiddenDp = document.getElementById('data_product');
-                    if (hiddenDp) hiddenDp.value = searchInput.value;
+                    if (hiddenDp) hiddenDp.value = dpSearchInput.value;
+                });
+            }
+
+            // Domain fallback: freeform text when Atlan not configured
+            const domainSearchInput = document.getElementById('domain_search');
+            if (domainSearchInput && !this._atlanConfigured) {
+                domainSearchInput.placeholder = 'e.g., Finance';
+                domainSearchInput.addEventListener('input', () => {
+                    const hiddenDomain = document.getElementById('domain');
+                    if (hiddenDomain) hiddenDomain.value = domainSearchInput.value;
                 });
             }
         },
@@ -300,6 +308,62 @@ const DDLC = {
             if (dd) dd.style.display = 'none';
         },
 
+        onDomainSearch() {
+            clearTimeout(this._domainTimer);
+            this._domainTimer = setTimeout(async () => {
+                const searchInput = document.getElementById('domain_search');
+                const q = (searchInput?.value || '').trim();
+
+                if (!this._atlanConfigured) return;
+
+                try {
+                    const url = `/api/atlan/search-domains?q=${encodeURIComponent(q)}`;
+                    const data = await DDLC.api.fetchJSON(url);
+                    // Endpoint returns a list directly
+                    this.renderDomainDropdown(Array.isArray(data) ? data : (data.domains || []));
+                } catch (err) {
+                    console.warn('Domain search failed:', err.message);
+                }
+            }, 300);
+        },
+
+        renderDomainDropdown(domains) {
+            const dd = document.getElementById('domainDropdown');
+            if (!dd) return;
+            if (!domains.length) {
+                dd.style.display = 'none';
+                return;
+            }
+            dd.innerHTML = domains.map(d => {
+                const safeD = JSON.stringify(d).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem;
+                                   border-bottom:1px solid var(--border); transition:background 0.15s;"
+                             onmousedown="DDLC.request.selectDomain(${safeD.replace(/&quot;/g, "'")})"
+                             onmouseover="this.style.background='var(--bg-input)'"
+                             onmouseout="this.style.background=''">
+                    <div style="font-weight:600; color:var(--text);">${DDLC.request._esc(d.name)}</div>
+                    ${d.description ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${DDLC.request._esc(d.description)}</div>` : ''}
+                    <div style="font-size:0.7rem; color:var(--text-dim); margin-top:2px; font-family:monospace;">${DDLC.request._esc(d.qualified_name || '')}</div>
+                </div>`;
+            }).join('');
+            dd.style.display = 'block';
+        },
+
+        selectDomain(d) {
+            const searchInput = document.getElementById('domain_search');
+            const hiddenDomain = document.getElementById('domain');
+            const hiddenQn = document.getElementById('domain_qualified_name');
+            if (searchInput) searchInput.value = d.name || '';
+            if (hiddenDomain) hiddenDomain.value = d.name || '';
+            if (hiddenQn) hiddenQn.value = d.qualified_name || '';
+            this.hideDomainDropdown();
+        },
+
+        hideDomainDropdown() {
+            const dd = document.getElementById('domainDropdown');
+            if (dd) dd.style.display = 'none';
+        },
+
         _esc(str) {
             if (!str) return '';
             const d = document.createElement('div');
@@ -323,12 +387,20 @@ const DDLC = {
                 const dataProductName = (dpHidden?.value || dpSearch?.value || '').trim();
                 const dataProductQn = (dpQnHidden?.value || '').trim() || null;
 
+                const domainSearch = document.getElementById('domain_search');
+                const domainHidden = document.getElementById('domain');
+                const domainQnHidden = document.getElementById('domain_qualified_name');
+                // If Atlan not configured, domain comes from the search input directly
+                const domainName = (domainHidden?.value || domainSearch?.value || '').trim();
+                const domainQn = (domainQnHidden?.value || '').trim() || null;
+
                 const data = {
                     title: form.title.value,
                     description: form.description.value,
                     business_context: form.business_context.value,
                     target_use_case: form.target_use_case.value,
-                    domain: form.domain.value,
+                    domain: domainName || null,
+                    domain_qualified_name: domainQn,
                     data_product: dataProductName || null,
                     data_product_qualified_name: dataProductQn,
                     urgency: form.urgency.value,

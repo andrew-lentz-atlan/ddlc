@@ -99,6 +99,18 @@ class MonitorMethod(str, Enum):
     REFERENTIAL_INTEGRITY = "referential_integrity"
 
 
+class AtlanDQSRuleType(str, Enum):
+    """Atlan Data Quality Studio rule template types."""
+
+    ROW_COUNT = "ROW_COUNT"
+    NULL_COUNT = "NULL_COUNT"
+    FRESHNESS = "FRESHNESS"
+    STRING_LENGTH = "STRING_LENGTH"
+    REGEX_MATCH = "REGEX_MATCH"
+    VALID_STRING_VALUES = "VALID_STRING_VALUES"
+    CUSTOM_SQL = "CUSTOM_SQL"
+
+
 class Urgency(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -268,7 +280,15 @@ class QualityCheck(BaseModel):
     method: Optional[str] = None              # MonitorMethod value (string for flexibility)
     column: Optional[str] = None              # Target column: "table.column" or None for table-level
     query: Optional[str] = None               # SQL query for SQL-type checks
-    engine: Optional[str] = None              # Tool: monte-carlo, great-expectations, soda, dbt
+    engine: Optional[str] = None              # Tool: monte-carlo, great-expectations, soda, dbt, atlan-dqs
+    # Atlan DQS extension fields (populated when engine == "atlan-dqs")
+    dqs_rule_type: Optional[str] = None           # AtlanDQSRuleType value
+    dqs_threshold_value: Optional[float] = None   # Numeric threshold
+    dqs_threshold_unit: Optional[str] = None      # DAYS, HOURS, PERCENTAGE (for FRESHNESS)
+    dqs_alert_priority: Optional[str] = None      # HIGH, NORMAL, URGENT
+    dqs_custom_sql: Optional[str] = None          # SQL query (for CUSTOM_SQL type)
+    dqs_pushed: bool = False                      # True after successful push to Atlan DQS
+    dqs_rule_qualified_name: Optional[str] = None # Atlan QN set after creation
 
 
 class SLAProperty(BaseModel):
@@ -301,6 +321,7 @@ class ODCSContract(BaseModel):
     version: str = "0.1.0"
     status: ContractStatus = ContractStatus.PROPOSED
     domain: Optional[str] = None
+    domain_qualified_name: Optional[str] = None        # Atlan DataDomain qualified_name
     tenant: Optional[str] = None
     data_product: Optional[str] = None
     data_product_qualified_name: Optional[str] = None  # Atlan Data Product qualified_name
@@ -337,6 +358,7 @@ class ContractRequest(BaseModel):
     urgency: Urgency = Urgency.MEDIUM
     requester: Participant
     domain: Optional[str] = None
+    domain_qualified_name: Optional[str] = None        # Atlan DataDomain qualified_name
     data_product: Optional[str] = None
     data_product_qualified_name: Optional[str] = None  # Atlan Data Product qualified_name
     desired_fields: Optional[List[str]] = None

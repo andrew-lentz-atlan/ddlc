@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/ddlc.css?v=8">
+    <link rel="stylesheet" href="/static/ddlc.css?v=10">
 </head>
 <body>
     <header class="app-header">
@@ -36,7 +36,7 @@
     </div>
 
     <!-- YAML slide-out panel -->
-    <div id="yamlOverlay" style="display:none; position:fixed; top:0; right:0; bottom:0; width:50%; max-width:640px; z-index:200; background:var(--bg); border-left:1px solid var(--border); box-shadow: -4px 0 20px rgba(0,0,0,0.5); overflow-y:auto;">
+    <div id="yamlOverlay" style="display:none; position:fixed; top:0; right:0; bottom:0; width:50%; max-width:640px; z-index:200; background:var(--bg); border-left:1px solid var(--border); box-shadow: -4px 0 20px rgba(0,0,0,0.5); overflow:hidden;">
         <div class="yaml-panel" style="border:none; border-radius:0; height:100%;">
             <div class="yaml-header">
                 <h3>ODCS v3.1.0 YAML</h3>
@@ -69,8 +69,8 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="/static/ddlc.js?v=8"></script>
-    <script src="/static/contract-builder.js?v=8"></script>
+    <script src="/static/ddlc.js?v=9"></script>
+    <script src="/static/contract-builder.js?v=9"></script>
     <script src="/static/yaml-preview.js?v=8"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

@@ -110,6 +110,7 @@ async def create_session(payload: dict[str, Any]):
         urgency=Urgency(payload.get("urgency", "medium")),
         requester=requester,
         domain=payload.get("domain") or None,
+        domain_qualified_name=payload.get("domain_qualified_name") or None,
         data_product=payload.get("data_product") or None,
         data_product_qualified_name=payload.get("data_product_qualified_name") or None,
         desired_fields=_parse_desired_fields(payload.get("desired_fields", "")),
@@ -119,6 +120,7 @@ async def create_session(payload: dict[str, Any]):
     contract = ODCSContract(
         name=request.title,
         domain=request.domain,
+        domain_qualified_name=request.domain_qualified_name,
         data_product=request.data_product,
         data_product_qualified_name=request.data_product_qualified_name,
         description_purpose=request.description,
@@ -207,6 +209,28 @@ async def advance_stage(session_id: str, payload: dict[str, Any]):
     atlan_url = None
     atlan_warning = None
     if target_stage == DDLCStage.ACTIVE:
+        # Pre-compute expected QN immediately so push_dq_rules works without
+        # waiting for the async Temporal workflow to complete.
+        if not session.contract.atlan_table_qualified_name:
+            _server = next((s for s in session.contract.servers if s.environment == "prod"), None)
+            if not _server:
+                _server = session.contract.servers[0] if session.contract.servers else None
+            if (
+                _server
+                and _server.connection_qualified_name
+                and _server.database
+                and _server.schema_name
+                and session.contract.schema_objects
+            ):
+                _table_name = session.contract.schema_objects[0].name
+                session.contract.atlan_table_qualified_name = (
+                    f"{_server.connection_qualified_name}"
+                    f"/{_server.database}"
+                    f"/{_server.schema_name}"
+                    f"/{_table_name}"
+                )
+                await store.save_session(session)
+
         try:
             from app.ddlc_workflow_client import trigger_approval_workflow
             await trigger_approval_workflow(session_id)
@@ -510,6 +534,12 @@ async def add_quality_check(session_id: str, payload: dict[str, Any]):
         column=payload.get("column") or None,
         query=payload.get("query") or None,
         engine=payload.get("engine") or None,
+        # Atlan DQS fields
+        dqs_rule_type=payload.get("dqs_rule_type") or None,
+        dqs_threshold_value=payload.get("dqs_threshold_value"),
+        dqs_threshold_unit=payload.get("dqs_threshold_unit") or None,
+        dqs_alert_priority=payload.get("dqs_alert_priority") or None,
+        dqs_custom_sql=payload.get("dqs_custom_sql") or None,
     )
     session.contract.quality_checks.append(check)
     await store.save_session(session)
@@ -557,6 +587,17 @@ async def update_quality_check(session_id: str, check_id: str, payload: dict[str
         check.query = payload["query"] or None
     if "engine" in payload:
         check.engine = payload["engine"] or None
+    # Atlan DQS fields
+    if "dqs_rule_type" in payload:
+        check.dqs_rule_type = payload["dqs_rule_type"] or None
+    if "dqs_threshold_value" in payload:
+        check.dqs_threshold_value = payload["dqs_threshold_value"]
+    if "dqs_threshold_unit" in payload:
+        check.dqs_threshold_unit = payload["dqs_threshold_unit"] or None
+    if "dqs_alert_priority" in payload:
+        check.dqs_alert_priority = payload["dqs_alert_priority"] or None
+    if "dqs_custom_sql" in payload:
+        check.dqs_custom_sql = payload["dqs_custom_sql"] or None
 
     await store.save_session(session)
     return JSONResponse(content={"ok": True})
@@ -1101,6 +1142,49 @@ async def search_atlan_connections(q: str = Query(""), connector: str = Query(""
     try:
         results = atlan_assets.search_connections(query=q, connector_type=connector, limit=limit)
         return JSONResponse(content={"connections": results})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/sessions/{session_id}/atlan/push-dq-rules", response_class=JSONResponse)
+async def push_dq_rules(session_id: str):
+    """
+    Push Atlan DQS quality rules to Atlan for the given session.
+
+    Only applicable when:
+      - Session is in ACTIVE stage (table must exist in Atlan)
+      - Session has quality checks with engine == "atlan-dqs" and dqs_pushed == False
+      - Atlan credentials are configured
+
+    Returns a summary of pushed / skipped / errored rules and persists
+    the updated dqs_pushed / dqs_rule_qualified_name on each check.
+    """
+    from app.ddlc import atlan_assets
+
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.current_stage != DDLCStage.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail="DQ rules can only be pushed after the contract is ACTIVE (asset must exist in Atlan).",
+        )
+
+    if not session.contract.atlan_table_qualified_name:
+        raise HTTPException(
+            status_code=400,
+            detail="No Atlan table qualified name found. Ensure the contract was published to Atlan first.",
+        )
+
+    if not atlan_assets.is_configured():
+        raise HTTPException(status_code=503, detail="Atlan credentials not configured")
+
+    try:
+        result = atlan_assets.push_dq_rules(session)
+        # Persist updated dqs_pushed / dqs_rule_qualified_name on quality checks
+        await store.save_session(session)
+        return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

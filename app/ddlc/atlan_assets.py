@@ -503,6 +503,22 @@ def register_placeholder_table(session: Any) -> dict[str, Any]:
         if guid and first_table_guid is None:
             first_table_guid = guid
 
+        # --- Step 5b: Associate Table with Domain (best-effort) ---
+        if contract.domain_qualified_name:
+            try:
+                from pyatlan.model.assets import DataDomain
+                domain_asset = client.asset.get_by_qualified_name(
+                    qualified_name=contract.domain_qualified_name,
+                    asset_type=DataDomain,
+                )
+                if domain_asset and domain_asset.guid:
+                    table_update = Table.updater(qualified_name=table_qn, name=table_name)
+                    table_update.domain_guids = {str(domain_asset.guid)}
+                    client.asset.save(table_update)
+                    log.info(f"Table {table_qn} associated with domain {contract.domain_qualified_name}")
+            except Exception as exc:
+                log.warning(f"Domain association skipped for {table_qn}: {exc}")
+
         # --- Step 6: Attach Atlan DataContract ---
         try:
             table_ref = Table.updater(qualified_name=table_qn, name=table_name)
@@ -551,3 +567,242 @@ def register_placeholder_table(session: Any) -> dict[str, Any]:
         "guid": first_table_guid,
         "url": atlan_url,
     }
+
+
+# ---------------------------------------------------------------------------
+# Atlan DQS rule creation
+# ---------------------------------------------------------------------------
+
+
+def push_dq_rules(session) -> dict:
+    """
+    Create Atlan Data Quality Studio rules for all quality checks with
+    engine == "atlan-dqs" that have not yet been pushed (dqs_pushed == False).
+
+    Requires:
+      - Session is ACTIVE with atlan_table_qualified_name set
+      - Atlan credentials configured
+
+    Mutates the session in-place: sets dqs_pushed=True and
+    dqs_rule_qualified_name on each successfully created rule.
+
+    Returns: {pushed: int, skipped: int, errors: list[str]}
+    """
+    import logging
+    from pyatlan.model.assets import DataQualityRule, Table, Column
+    from pyatlan.model.fluent_search import FluentSearch, CompoundQuery
+
+    log = logging.getLogger(__name__)
+    client = _get_client()
+    contract = session.contract
+
+    table_qn = contract.atlan_table_qualified_name
+    if not table_qn:
+        raise ValueError("No atlan_table_qualified_name on contract — publish first.")
+
+    # Build a map: column name (upper) → Atlan column qualified_name
+    # Needed to resolve "FACT_ORDERS.ORDERDATE" style column references.
+    col_qn_map: dict[str, str] = {}
+    try:
+        col_request = (
+            FluentSearch()
+            .where(CompoundQuery.asset_type(Column))
+            .where(CompoundQuery.active_assets())
+            .where(Column.TABLE_QUALIFIED_NAME.eq(table_qn))
+            .page_size(200)
+            .include_on_results(Column.NAME)
+            .include_on_results(Column.QUALIFIED_NAME)
+        ).to_request()
+        for col in client.asset.search(col_request):
+            if col.name:
+                col_qn_map[col.name.upper()] = col.qualified_name
+    except Exception as exc:
+        log.warning(f"Could not pre-fetch column QNs for {table_qn}: {exc}")
+
+    pushed = 0
+    skipped = 0
+    errors: list[str] = []
+
+    # Build a reference to the table asset (used in rule creators)
+    table_ref = Table.ref_by_qualified_name(table_qn)
+
+    for check in contract.quality_checks:
+        if check.engine != "atlan-dqs":
+            skipped += 1
+            continue
+        if check.dqs_pushed:
+            skipped += 1
+            continue
+        if not check.dqs_rule_type:
+            errors.append(f"Check '{check.description[:40]}' has no dqs_rule_type — skipped.")
+            skipped += 1
+            continue
+
+        rule_type_key = check.dqs_rule_type.upper()
+        # Map internal SCREAMING_SNAKE_CASE → Atlan DQS template display name (Title Case).
+        # These display names are keyed from DataQualityRuleTemplate.display_name in the tenant.
+        # custom_sql_creator hardcodes "Custom SQL" (confirmed from pyatlan source).
+        _RULE_DISPLAY_NAMES: dict[str, str] = {
+            "ROW_COUNT": "Row Count",
+            "NULL_COUNT": "Null Count",
+            "FRESHNESS": "Freshness",
+            "STRING_LENGTH": "String Length",
+            "REGEX_MATCH": "Regex",
+            "VALID_STRING_VALUES": "Valid Values",
+            "CUSTOM_SQL": "Custom SQL",
+        }
+        rule_type = _RULE_DISPLAY_NAMES.get(rule_type_key, rule_type_key)
+
+        # pyatlan requires int threshold (not float)
+        threshold = int(check.dqs_threshold_value) if check.dqs_threshold_value is not None else 0
+
+        # Map alert priority → pyatlan enum.
+        # DataQualityRuleAlertPriority has URGENT / NORMAL / LOW (no HIGH).
+        # Treat "HIGH" as URGENT so demo data works correctly.
+        _PRIORITY_MAP = {
+            "HIGH": "URGENT", "URGENT": "URGENT", "NORMAL": "NORMAL", "LOW": "LOW",
+        }
+        alert_priority_str = _PRIORITY_MAP.get(
+            (check.dqs_alert_priority or "NORMAL").upper(), "NORMAL"
+        )
+
+        # Default threshold compare operator per rule type (keyed by internal SCREAMING_SNAKE_CASE).
+        # ROW_COUNT / REGEX_MATCH / VALID_STRING_VALUES: row/match count must be >= threshold
+        # NULL_COUNT: null count must be <= threshold (usually 0)
+        # FRESHNESS / STRING_LENGTH: value must be <= threshold
+        # CUSTOM_SQL: result count must be == threshold (0 = no violations)
+        _OP_MAP = {
+            "ROW_COUNT": "GREATER_THAN_EQUAL",
+            "NULL_COUNT": "LESS_THAN_EQUAL",
+            "FRESHNESS": "LESS_THAN_EQUAL",
+            "STRING_LENGTH": "LESS_THAN_EQUAL",
+            "REGEX_MATCH": "GREATER_THAN_EQUAL",
+            "VALID_STRING_VALUES": "GREATER_THAN_EQUAL",
+            "CUSTOM_SQL": "EQUAL",
+        }
+        compare_op_str = _OP_MAP.get(rule_type_key, "GREATER_THAN_EQUAL")
+
+        # Map DDLC dimension → DataQualityDimension enum attribute name (UPPERCASE)
+        _DIM_MAP = {
+            "completeness": "COMPLETENESS", "timeliness": "TIMELINESS",
+            "freshness": "TIMELINESS", "accuracy": "ACCURACY",
+            "consistency": "CONSISTENCY", "uniqueness": "UNIQUENESS",
+            "validity": "VALIDITY", "volume": "VOLUME",
+        }
+        dimension_str = _DIM_MAP.get((check.dimension or "validity").lower(), "VALIDITY")
+
+        try:
+            from pyatlan.model.assets import DataQualityRule
+            from pyatlan.model.enums import (
+                DataQualityRuleAlertPriority,
+                DataQualityRuleThresholdCompareOperator,
+                DataQualityRuleThresholdUnit,
+                DataQualityDimension,
+            )
+
+            priority_enum = getattr(
+                DataQualityRuleAlertPriority,
+                alert_priority_str,
+                DataQualityRuleAlertPriority.NORMAL,
+            )
+            compare_op_enum = getattr(
+                DataQualityRuleThresholdCompareOperator,
+                compare_op_str,
+                DataQualityRuleThresholdCompareOperator.GREATER_THAN_EQUAL,
+            )
+            dimension_enum = getattr(
+                DataQualityDimension,
+                dimension_str,
+                DataQualityDimension.VALIDITY,
+            )
+
+            # Build a short rule name from rule type + description snippet
+            rule_name = f"{rule_type}: {check.description[:40].strip()}"
+
+            if rule_type_key == "CUSTOM_SQL":
+                # Custom SQL rule — table-level.
+                # custom_sql_creator internally hardcodes rule_type="Custom SQL".
+                # Note: custom_sql_return_type is NOT a param in pyatlan 8.4.6.
+                rule = DataQualityRule.custom_sql_creator(
+                    client=client,
+                    rule_name=rule_name,
+                    asset=table_ref,
+                    custom_sql=check.dqs_custom_sql or "",
+                    threshold_compare_operator=compare_op_enum,
+                    threshold_value=threshold,
+                    alert_priority=priority_enum,
+                    dimension=dimension_enum,
+                    description=check.description or None,
+                )
+            else:
+                # Resolve column reference (e.g. "FACT_ORDERS.ORDERDATE" → col QN)
+                column_ref = None
+                if check.column:
+                    col_name = check.column.split(".")[-1].upper()
+                    col_qn = col_qn_map.get(col_name)
+                    if col_qn:
+                        column_ref = Column.ref_by_qualified_name(col_qn)
+
+                if check.column and column_ref is None:
+                    # Column was specified but not found in Atlan — the table asset
+                    # may not have been created yet or search indexing is still in
+                    # progress.  Raise explicitly so the caller gets a clear error
+                    # instead of silently falling back to table-level (which fails
+                    # for column-only rule types like NULL_COUNT).
+                    col_name = check.column.split(".")[-1].upper()
+                    raise ValueError(
+                        f"Column '{col_name}' not found in Atlan for table {table_qn}. "
+                        f"Ensure the table asset was created (approve the contract first) "
+                        f"and wait ~30 s for Atlan search indexing, then retry."
+                    )
+
+                if column_ref is not None:
+                    # Column-level rule
+                    kwargs: dict = dict(
+                        client=client,
+                        asset=table_ref,
+                        column=column_ref,
+                        rule_type=rule_type,
+                        threshold_compare_operator=compare_op_enum,
+                        threshold_value=threshold,
+                        alert_priority=priority_enum,
+                    )
+                    if check.dqs_threshold_unit:
+                        unit_enum = getattr(
+                            DataQualityRuleThresholdUnit,
+                            check.dqs_threshold_unit.upper(),
+                            None,
+                        )
+                        if unit_enum is not None:
+                            kwargs["threshold_unit"] = unit_enum
+                    rule = DataQualityRule.column_level_rule_creator(**kwargs)
+                else:
+                    # Table-level rule (no column reference specified)
+                    rule = DataQualityRule.table_level_rule_creator(
+                        client=client,
+                        asset=table_ref,
+                        rule_type=rule_type,
+                        threshold_compare_operator=compare_op_enum,
+                        threshold_value=threshold,
+                        alert_priority=priority_enum,
+                    )
+
+            resp = client.asset.save(rule)
+            rule_qn = None
+            if resp and hasattr(resp, "assets_created") and resp.assets_created:
+                created = resp.assets_created(DataQualityRule)
+                if created:
+                    rule_qn = created[0].qualified_name
+
+            # Mutate the quality check in-place
+            check.dqs_pushed = True
+            check.dqs_rule_qualified_name = rule_qn
+            pushed += 1
+            log.info(f"DQS rule created: {rule_type} — {check.description[:50]}")
+
+        except Exception as exc:
+            err_msg = f"{rule_type} — {check.description[:40]}: {exc}"
+            log.warning(f"DQS rule creation failed: {err_msg}")
+            errors.append(err_msg)
+
+    return {"pushed": pushed, "skipped": skipped, "errors": errors}

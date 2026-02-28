@@ -137,5 +137,25 @@ class DDLCActivities(ActivitiesInterface):
         if atlan_qn:
             session.contract.atlan_table_qualified_name = atlan_qn
 
+            # Also resolve GUID + URL so "View in Atlan" button appears
+            try:
+                import asyncio
+                import os
+                from app.ddlc import atlan_assets
+                if atlan_assets.is_configured():
+                    from pyatlan.model.assets import Table as _Table
+                    client = atlan_assets._get_client()
+                    existing = await asyncio.to_thread(
+                        client.asset.get_by_qualified_name,
+                        qualified_name=atlan_qn,
+                        asset_type=_Table,
+                    )
+                    if existing and existing.guid:
+                        base = os.getenv("ATLAN_BASE_URL", "").rstrip("/")
+                        session.contract.atlan_table_guid = str(existing.guid)
+                        session.contract.atlan_table_url = f"{base}/assets/{existing.guid}/overview"
+            except Exception as exc:
+                logger.debug(f"Could not resolve Atlan GUID/URL: {exc}")
+
         await store.save_session(session)
         logger.info(f"Session {session_id} is now ACTIVE")

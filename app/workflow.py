@@ -54,7 +54,13 @@ class DDLCApprovalWorkflow(WorkflowInterface):
 
     @workflow.run
     async def run(self, workflow_config: Dict[str, Any]) -> Dict[str, Any]:
+        # The SDK's start_workflow only passes {"workflow_id": workflow_id} to Temporal
+        # (it skips StateStore save when workflow_id is pre-supplied).
+        # Extract session_id from workflow_id since it's encoded as "ddlc-approval-{session_id}".
+        workflow_id = workflow_config.get("workflow_id", "")
         session_id: str = workflow_config.get("session_id", "")
+        if not session_id and workflow_id.startswith("ddlc-approval-"):
+            session_id = workflow_id.removeprefix("ddlc-approval-")
         logger.info(f"DDLCApprovalWorkflow starting for session {session_id}")
 
         # Activity 1: Create placeholder Table + columns in Atlan

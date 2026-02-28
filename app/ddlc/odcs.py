@@ -214,6 +214,36 @@ def contract_to_odcs_dict(contract: ODCSContract) -> dict[str, Any]:
     if contract.custom_properties:
         odcs["customProperties"] = [_serialize_custom_property(p) for p in contract.custom_properties]
 
+    # x-atlan-dqs: Atlan Data Quality Studio extension block
+    # Contains all quality checks with engine == "atlan-dqs", serialized in
+    # the DQS rule format.  ODCS doesn't natively support Atlan DQS — this
+    # follows the same extension convention used by tools like Monte Carlo.
+    dqs_checks = [q for q in contract.quality_checks if q.engine == "atlan-dqs"]
+    if dqs_checks:
+        dqs_rules = []
+        for q in dqs_checks:
+            rule: dict[str, Any] = {}
+            if q.dqs_rule_type:
+                rule["ruleType"] = q.dqs_rule_type
+            if q.column:
+                rule["column"] = q.column
+            if q.dqs_threshold_value is not None:
+                rule["thresholdValue"] = q.dqs_threshold_value
+            if q.dqs_threshold_unit:
+                rule["thresholdUnit"] = q.dqs_threshold_unit
+            if q.dqs_alert_priority:
+                rule["alertPriority"] = q.dqs_alert_priority
+            if q.dqs_custom_sql:
+                rule["customSql"] = q.dqs_custom_sql
+            if q.description:
+                rule["description"] = q.description
+            if q.dqs_pushed:
+                rule["pushed"] = True
+            if q.dqs_rule_qualified_name:
+                rule["qualifiedName"] = q.dqs_rule_qualified_name
+            dqs_rules.append(rule)
+        odcs["x-atlan-dqs"] = {"rules": dqs_rules}
+
     return odcs
 
 
