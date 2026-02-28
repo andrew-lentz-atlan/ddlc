@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reference Data Center — Atlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/rdm.css" />
+</head>
+<body>
+
+<!-- =====================================================================
+     App Shell
+====================================================================== -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#3c71df" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Reference Data</span>
+      </div>
+      <button id="btn-new-dataset" class="btn-icon-primary" title="New dataset">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar-search">
+      <input id="nav-search" type="text" placeholder="Search datasets…" autocomplete="off" />
+    </div>
+
+    <nav id="nav-tree" class="nav-tree">
+      <div class="nav-loading">Loading…</div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="btn-text-sm" id="btn-reseed" title="Reset demo data">↺ Reset demo</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main id="main">
+
+    <!-- Empty state -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z" stroke="#d0d5e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h2>Reference Data Center</h2>
+      <p>Select a dataset from the left nav, or create a new one to get started.</p>
+      <button class="btn-primary" id="btn-new-dataset-empty">+ New Dataset</button>
+    </div>
+
+    <!-- Dataset view (hidden until a dataset is selected) -->
+    <div id="dataset-view" class="dataset-view hidden">
+
+      <!-- Header -->
+      <div class="dataset-header">
+        <div class="dataset-header-left">
+          <div class="dataset-title-row">
+            <h1 id="ds-display-name">—</h1>
+            <span id="ds-status-badge" class="status-badge">draft</span>
+          </div>
+          <div class="dataset-meta">
+            <span id="ds-domain" class="meta-chip domain-chip">Global</span>
+            <span id="ds-version" class="meta-chip">v1.0</span>
+            <span id="ds-row-count" class="meta-chip row-count">0 rows</span>
+            <span id="ds-owners" class="meta-chip owners-chip"></span>
+          </div>
+          <p id="ds-description" class="dataset-description"></p>
+        </div>
+        <div class="dataset-header-right">
+          <button class="btn-secondary" id="btn-import-csv">↑ Import CSV</button>
+          <button class="btn-primary" id="btn-publish">Publish to Atlan</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="data">Data</button>
+        <button class="tab-btn" data-tab="schema">Schema</button>
+        <button class="tab-btn" data-tab="access">MDLH Access</button>
+        <button class="tab-btn" data-tab="governance">Governance</button>
+      </div>
+
+      <!-- Tab: Data (spreadsheet grid) -->
+      <div id="tab-data" class="tab-panel">
+        <div class="grid-toolbar">
+          <div class="grid-toolbar-left">
+            <span id="grid-row-count" class="row-count-label">0 rows</span>
+          </div>
+          <div class="grid-toolbar-right">
+            <button class="btn-secondary btn-sm" id="btn-add-row">+ Add Row</button>
+          </div>
+        </div>
+        <div class="grid-wrapper">
+          <table id="data-grid" class="data-grid">
+            <thead id="grid-head"></thead>
+            <tbody id="grid-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Schema -->
+      <div id="tab-schema" class="tab-panel hidden">
+        <div class="schema-toolbar">
+          <button class="btn-secondary btn-sm" id="btn-add-column">+ Add Column</button>
+        </div>
+        <table class="schema-table">
+          <thead>
+            <tr>
+              <th>Column Name</th>
+              <th>Display Name</th>
+              <th>Type</th>
+              <th>Primary Key</th>
+              <th>Nullable</th>
+              <th>Description</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="schema-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Tab: MDLH Access -->
+      <div id="tab-access" class="tab-panel hidden">
+        <div class="access-grid">
+          <div class="access-card">
+            <div class="access-card-header">
+              <div class="access-card-title">
+                <span class="badge-snowflake">❄️ Snowflake</span>
+                <span class="access-label">GOLD View</span>
+              </div>
+              <button class="btn-copy" data-target="snippet-gold">Copy</button>
+            </div>
+            <p class="access-description">Clean view — use this in dashboards, dbt models, and AI agents.</p>
+            <pre id="snippet-gold" class="code-block"></pre>
+          </div>
+          <div class="access-card">
+            <div class="access-card-header">
+              <div class="access-card-title">
+                <span class="badge-raw">⚙️ Raw</span>
+                <span class="access-label">ENTITY_METADATA</span>
+              </div>
+              <button class="btn-copy" data-target="snippet-raw">Copy</button>
+            </div>
+            <p class="access-description">Direct query via MDLH entity metadata tables — all governance fields included.</p>
+            <pre id="snippet-raw" class="code-block"></pre>
+          </div>
+        </div>
+        <div class="access-info">
+          <div class="info-icon">ℹ️</div>
+          <p id="snippet-description"></p>
+        </div>
+      </div>
+
+      <!-- Tab: Governance -->
+      <div id="tab-governance" class="tab-panel hidden">
+        <div class="governance-grid">
+          <div class="gov-card">
+            <h3>Owners</h3>
+            <div id="gov-owners" class="tag-list"></div>
+          </div>
+          <div class="gov-card">
+            <h3>Tags</h3>
+            <div id="gov-tags" class="tag-list"></div>
+          </div>
+          <div class="gov-card">
+            <h3>Details</h3>
+            <table class="details-table">
+              <tr><td>Name (slug)</td><td id="gov-name">—</td></tr>
+              <tr><td>Domain</td><td id="gov-domain">—</td></tr>
+              <tr><td>Version</td><td id="gov-version">—</td></tr>
+              <tr><td>Status</td><td id="gov-status">—</td></tr>
+              <tr><td>Created</td><td id="gov-created">—</td></tr>
+              <tr><td>Updated</td><td id="gov-updated">—</td></tr>
+              <tr><td>Atlan Synced</td><td id="gov-synced">—</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div><!-- /dataset-view -->
+
+  </main><!-- /main -->
+</div><!-- /app -->
+
+<!-- =====================================================================
+     Modals
+====================================================================== -->
+
+<!-- New Dataset modal -->
+<div id="modal-new-dataset" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>New Reference Dataset</h2>
+      <button class="modal-close" data-modal="modal-new-dataset">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-group">
+        <label>Display Name <span class="required">*</span></label>
+        <input id="new-ds-display-name" type="text" placeholder="e.g. Country Codes" />
+      </div>
+      <div class="field-group">
+        <label>Slug (name) <span class="required">*</span>
+          <span class="field-hint">Snake case, used as table name in MDLH</span>
+        </label>
+        <input id="new-ds-name" type="text" placeholder="e.g. country_codes" />
+      </div>
+      <div class="field-group">
+        <label>Domain</label>
+        <select id="new-ds-domain">
+          <option>Global</option>
+          <option>Finance</option>
+          <option>HR</option>
+          <option>Governance</option>
+          <option>Operations</option>
+          <option>Sales</option>
+          <option>Engineering</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Description</label>
+        <textarea id="new-ds-description" rows="3" placeholder="What is this dataset? When should it be used?"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-modal="modal-new-dataset">Cancel</button>
+      <button class="btn-primary" id="btn-create-dataset">Create Dataset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Column modal -->
+<div id="modal-add-column" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Add Column</h2>
+      <button class="modal-close" data-modal="modal-add-column">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field-group">
+          <label>Column Name <span class="required">*</span></label>
+          <input id="col-name" type="text" placeholder="e.g. iso_alpha3" />
+        </div>
+        <div class="field-group">
+          <label>Display Name <span class="required">*</span></label>
+          <input id="col-display-name" type="text" placeholder="e.g. ISO Alpha-3" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Type</label>
+          <select id="col-type">
+            <option value="string">String</option>
+            <option value="integer">Integer</option>
+            <option value="decimal">Decimal</option>
+            <option value="date">Date</option>
+            <option value="boolean">Boolean</option>
+          </select>
+        </div>
+        <div class="field-group check-group">
+          <label><input id="col-pk" type="checkbox" /> Primary Key</label>
+          <label><input id="col-nullable" type="checkbox" checked /> Nullable</label>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Description</label>
+        <input id="col-description" type="text" placeholder="Optional column description" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-modal="modal-add-column">Cancel</button>
+      <button class="btn-primary" id="btn-confirm-add-column">Add Column</button>
+    </div>
+  </div>
+</div>
+
+<!-- CSV Import modal -->
+<div id="modal-import-csv" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Import CSV</h2>
+      <button class="modal-close" data-modal="modal-import-csv">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="csv-drop-zone">
+        <div class="upload-icon">📄</div>
+        <p>Drag & drop a CSV file here, or</p>
+        <label class="btn-secondary btn-sm" style="cursor:pointer">
+          Choose File
+          <input type="file" id="csv-file-input" accept=".csv" style="display:none" />
+        </label>
+        <p id="csv-filename" class="upload-filename"></p>
+      </div>
+      <div class="field-group" style="margin-top:1rem">
+        <label>
+          <input type="checkbox" id="csv-replace-all" />
+          Replace all existing rows
+        </label>
+      </div>
+      <div id="csv-preview" class="csv-preview hidden"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-modal="modal-import-csv">Cancel</button>
+      <button class="btn-primary" id="btn-confirm-import" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/rdm.js"></script>
+</body>
+</html>
