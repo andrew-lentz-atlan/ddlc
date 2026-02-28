@@ -21,8 +21,9 @@ try:
 except ImportError:
     pass
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.rdm.models import (
@@ -39,11 +40,20 @@ from app.rdm.models import (
 from app.rdm.store import store
 
 # ---------------------------------------------------------------------------
-# Paths
+# Config
 # ---------------------------------------------------------------------------
 _HERE          = Path(__file__).parent
 _FRONTEND_DIR  = _HERE / "frontend"
 _STATIC_DIR    = _FRONTEND_DIR / "static"
+
+_ALLOWED_ORIGINS = [
+    "http://localhost:3333",  # Atlan frontend (actual dev port)
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:3333",
+    "http://127.0.0.1:5173",
+]
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -65,6 +75,32 @@ async def lifespan(app: FastAPI):
 # App
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Reference Data Management Center", lifespan=lifespan)
+
+# CORS — allow Atlan frontend to make cross-origin requests and iframe-embed this app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def iframe_headers(request: Request, call_next) -> Response:
+    """Remove X-Frame-Options and set CSP frame-ancestors so the Atlan frontend
+    can embed this app in a secure iframe."""
+    response = await call_next(request)
+    if "x-frame-options" in response.headers:
+        del response.headers["x-frame-options"]
+    csp_origins = " ".join(_ALLOWED_ORIGINS)
+    response.headers["Content-Security-Policy"] = (
+        f"frame-ancestors 'self' {csp_origins}"
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
