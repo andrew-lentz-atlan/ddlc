@@ -7,6 +7,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/rdm.css" />
+  <script>
+    // Atlan iframe handshake — must reply IFRAME_READY to ATLAN_HANDSHAKE
+    // within 10s or the Atlan frontend shows "Something went wrong".
+    window.__atlanAuth = null;
+    window.addEventListener('message', function(event) {
+      if (!event.data || typeof event.data !== 'object') return;
+      switch (event.data.type) {
+        case 'ATLAN_HANDSHAKE':
+          event.source.postMessage({ type: 'IFRAME_READY' }, event.origin);
+          break;
+        case 'ATLAN_AUTH_CONTEXT':
+          window.__atlanAuth = event.data.payload; // token available if needed
+          break;
+        case 'ATLAN_LOGOUT':
+          window.__atlanAuth = null;
+          break;
+      }
+    });
+  </script>
 </head>
 <body>
 
