@@ -803,6 +803,9 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     overflow: hidden;
+    /* Flex column so yaml-content can fill remaining height in the slide-out overlay */
+    display: flex;
+    flex-direction: column;
 }
 
 .yaml-header {
@@ -812,6 +815,7 @@ body {
     padding: 10px 16px;
     background: var(--bg-input);
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .yaml-header h3 {
@@ -822,8 +826,10 @@ body {
 .yaml-content {
     padding: 16px;
     overflow-x: auto;
-    max-height: 600px;
     overflow-y: auto;
+    /* Fill all remaining height in the flex column — no more 600px cap */
+    flex: 1;
+    min-height: 0;
 }
 
 .yaml-content pre {
@@ -1807,6 +1813,46 @@ body {
     gap: 8px;
     justify-content: flex-end;
     padding-top: 4px;
+}
+
+/* Atlan DQS sub-form */
+.dqs-subform {
+    padding: 12px 16px;
+    background: rgba(20, 184, 166, 0.05);
+    border: 1px solid rgba(20, 184, 166, 0.25);
+    border-radius: var(--radius);
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dqs-subform label {
+    font-size: 0.75rem;
+    color: #0d9488;
+    font-weight: 500;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.dqs-subform input,
+.dqs-subform select,
+.dqs-subform textarea {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border: 1px solid rgba(20, 184, 166, 0.3);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.82rem;
+    box-sizing: border-box;
+}
+
+.dqs-subform input:focus,
+.dqs-subform select:focus,
+.dqs-subform textarea:focus {
+    outline: none;
+    border-color: #14b8a6;
 }
 
 /* ---------------------------------------------------------------------------
