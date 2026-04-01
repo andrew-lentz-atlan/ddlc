@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access — ServiceNow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./static/access.css">
+    <script>
+        // Atlan iframe auth handshake
+        // Protocol: ATLAN_HANDSHAKE -> IFRAME_READY -> ATLAN_AUTH_CONTEXT
+        window.__atlanAuth = null;
+        window.__atlanToken = null;
+        window.__atlanAssetGuid = null;
+
+        var TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiry
+        var _refreshTimer = null;
+
+        function scheduleTokenRefresh(expiresAt) {
+            if (_refreshTimer) clearTimeout(_refreshTimer);
+            if (!expiresAt) return;
+            var delay = Math.max(0, expiresAt - TOKEN_REFRESH_BUFFER_MS - Date.now());
+            _refreshTimer = setTimeout(function() {
+                if (window.parent !== window) {
+                    window.parent.postMessage({ type: 'IFRAME_TOKEN_REQUEST' }, '*');
+                }
+            }, delay);
+        }
+
+        // Auth timeout — app still works in standalone mode if handshake doesn't arrive
+        var AUTH_TIMEOUT_MS = 10000;
+        var _authTimer = setTimeout(function() {
+            if (!window.__atlanAuth) {
+                console.warn('Atlan auth handshake timed out after ' + AUTH_TIMEOUT_MS + 'ms');
+            }
+        }, AUTH_TIMEOUT_MS);
+
+        window.addEventListener('message', function(event) {
+            if (!event.data || typeof event.data !== 'object') return;
+
+            switch (event.data.type) {
+                case 'ATLAN_HANDSHAKE':
+                    event.source.postMessage({ type: 'IFRAME_READY' }, event.origin);
+                    break;
+
+                case 'ATLAN_AUTH_CONTEXT':
+                    clearTimeout(_authTimer);
+                    window.__atlanAuth = event.data.payload;
+                    window.__atlanToken = event.data.payload ? event.data.payload.token : null;
+
+                    if (event.data.payload && event.data.payload.page) {
+                        var page = event.data.payload.page;
+                        window.__atlanAssetGuid = page.guid || (page.params && page.params.id) || null;
+                    }
+
+                    // Schedule proactive token refresh
+                    if (event.data.payload && event.data.payload.expiresAt) {
+                        scheduleTokenRefresh(event.data.payload.expiresAt);
+                    }
+
+                    // Re-prefill after auth arrives
+                    if (typeof AccessApp !== 'undefined' && AccessApp.state === 'form') {
+                        AccessApp.prefillFromAuth();
+                    }
+                    break;
+
+                case 'ATLAN_TOKEN_REFRESH':
+                    if (event.data.payload) {
+                        window.__atlanAuth = event.data.payload;
+                        window.__atlanToken = event.data.payload.token;
+                        if (event.data.payload.expiresAt) {
+                            scheduleTokenRefresh(event.data.payload.expiresAt);
+                        }
+                    }
+                    break;
+
+                case 'ATLAN_LOGOUT':
+                    window.__atlanAuth = null;
+                    window.__atlanToken = null;
+                    window.__atlanAssetGuid = null;
+                    if (_refreshTimer) clearTimeout(_refreshTimer);
+                    break;
+            }
+        });
+
+        // Signal readiness to parent immediately
+        if (window.parent !== window) {
+            window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
+        }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <!-- Rendered by access.js -->
+    </div>
+    <script src="./static/access.js"></script>
+</body>
+</html>

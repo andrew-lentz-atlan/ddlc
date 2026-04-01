@@ -1,0 +1,17 @@
+{
+    "servicenow": {
+        "instance_url": "https://dev290876.service-now.com",
+        "client_id": "",
+        "client_secret": "",
+        "username": "admin",
+        "password": "GkN6D2Wumj%-"
+    },
+    "default_catalog_item_sys_id": "19187ea8c38003107ea1be13e401310e",
+    "mappings": [
+        {
+            "qn_pattern": "*",
+            "catalog_item_sys_id": "19187ea8c38003107ea1be13e401310e",
+            "display_name": "Digital Information Core Access Request"
+        }
+    ]
+}

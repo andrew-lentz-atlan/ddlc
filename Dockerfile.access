@@ -1,0 +1,14 @@
+# Access App — ServiceNow Integration
+# Single-stage build (no Node.js needed — vanilla HTML/JS frontend)
+
+FROM registry.atlan.com/public/application-sdk:main-2.6.0
+
+COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
+    uv venv .venv && \
+    uv sync --locked --no-install-project
+
+COPY --chown=appuser:appuser . .
+
+ENV ATLAN_APP_HTTP_PORT=8000
+ENV ATLAN_APPLICATION_NAME=atlan-access-app

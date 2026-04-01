@@ -1,0 +1,568 @@
+/* Access App — ServiceNow Integration Styles */
+/* Shares design tokens with other Atlan apps */
+
+:root {
+    --bg:           #f8f8fd;
+    --bg-card:      #ffffff;
+    --bg-input:     #f6f7f9;
+    --bg-hover:     #eff1f5;
+    --border:       #e0e4eb;
+    --border-focus: #3c71df;
+    --text:         #34394b;
+    --text-muted:   #6a7692;
+    --text-dim:     #9aa3b8;
+    --accent:       #3c71df;
+    --accent-hover: #225bd2;
+    --success:      #00b28a;
+    --success-bg:   #e6f9f4;
+    --warning:      #f7b43d;
+    --danger:       #cc4747;
+    --danger-bg:    #fef2f2;
+    --radius:       6px;
+    --radius-lg:    10px;
+    --shadow:       0 1px 4px rgba(0,0,0,.08);
+    --transition:   150ms ease;
+    --font:         'Inter', Avenir, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 14px;
+    padding: 0;
+    margin: 0;
+}
+
+/* Container */
+.access-container {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 28px 24px 48px;
+}
+
+/* Header */
+.access-header {
+    margin-bottom: 24px;
+}
+
+.access-header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.access-header p {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.access-meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.access-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Form */
+.access-form {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow);
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--text);
+}
+
+.form-group label .required {
+    color: var(--danger);
+    margin-left: 2px;
+}
+
+.form-group .help-text {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 4px;
+}
+
+/* Inputs */
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="url"],
+.form-group input[type="number"],
+.form-group input[type="date"],
+.form-group input[type="datetime-local"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--text);
+    transition: border-color var(--transition);
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: var(--border-focus);
+    background: var(--bg-card);
+}
+
+.form-group textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.form-group select {
+    cursor: pointer;
+}
+
+/* Checkbox */
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.checkbox-wrapper label {
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
+/* Radio */
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.radio-option input[type="radio"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.radio-option label {
+    margin-bottom: 0;
+    font-weight: 400;
+    cursor: pointer;
+}
+
+/* Multi-select */
+.multi-select-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Read-only */
+.form-group input[readonly],
+.form-group textarea[readonly] {
+    background: var(--bg-hover);
+    cursor: default;
+    color: var(--text-muted);
+}
+
+/* Validation error */
+.form-group.has-error input,
+.form-group.has-error select,
+.form-group.has-error textarea {
+    border-color: var(--danger);
+}
+
+.form-group .error-message {
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 4px;
+    display: none;
+}
+
+.form-group.has-error .error-message {
+    display: block;
+}
+
+/* Submit */
+.form-actions {
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.btn {
+    padding: 9px 20px;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* States */
+.state-loading,
+.state-success,
+.state-error,
+.state-not-configured {
+    text-align: center;
+    padding: 48px 24px;
+}
+
+.state-loading .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.state-loading p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.state-success {
+    background: var(--success-bg);
+    border: 1px solid var(--success);
+    border-radius: var(--radius-lg);
+}
+
+.state-success h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--success);
+    margin-bottom: 8px;
+}
+
+.state-success .request-numbers {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 12px;
+    font-size: 13px;
+}
+
+.state-success .request-numbers strong {
+    font-weight: 600;
+}
+
+.state-error {
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-lg);
+}
+
+.state-error h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--danger);
+    margin-bottom: 8px;
+}
+
+.state-error p {
+    color: var(--text);
+    font-size: 13px;
+}
+
+.state-error .btn {
+    margin-top: 16px;
+}
+
+.state-not-configured {
+    color: var(--text-muted);
+}
+
+.state-not-configured h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+/* ── Required notice ── */
+.required-notice {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.required {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+/* ── DIGIC description block ── */
+.digic-description {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: var(--bg-input);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.6;
+}
+
+.access-header .subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 0;
+}
+
+/* ── Reference field (with icon + clear button) ── */
+.reference-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.reference-field input {
+    width: 100%;
+    padding: 8px 36px 8px 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--text);
+    transition: border-color var(--transition);
+    outline: none;
+}
+
+.reference-field input:focus {
+    border-color: var(--border-focus);
+    background: var(--bg-card);
+}
+
+.reference-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--accent);
+    font-size: 16px;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.reference-clear {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.reference-clear:hover {
+    color: var(--text);
+}
+
+/* ── Policy block ── */
+.form-group-policy {
+    margin-bottom: 8px;
+}
+
+.policy-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+.policy-label .info-icon {
+    color: var(--accent);
+    cursor: help;
+    font-size: 15px;
+}
+
+.policy-box {
+    position: relative;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 16px 20px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+}
+
+.policy-box p {
+    margin-bottom: 12px;
+}
+
+.policy-box li {
+    margin-left: 20px;
+    margin-bottom: 4px;
+    list-style: disc;
+}
+
+.policy-box li.sub-item {
+    margin-left: 40px;
+    list-style: circle;
+}
+
+.policy-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-dim);
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+}
+
+.policy-close:hover {
+    color: var(--text);
+}
+
+/* ── Label / info text field ── */
+.form-group-label {
+    margin-bottom: 8px;
+}
+
+.label-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.5;
+}
+
+/* ── Read-only styled field ── */
+.form-group input.readonly {
+    background: var(--bg-hover);
+    cursor: default;
+    color: var(--text-muted);
+    border-style: dashed;
+}
+
+/* ── Success state improvements ── */
+.success-icon {
+    width: 48px;
+    height: 48px;
+    background: var(--success);
+    border-radius: 50%;
+    color: #fff;
+    font-size: 24px;
+    line-height: 48px;
+    text-align: center;
+    margin: 0 auto 16px;
+}
+
+.req-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+}
+
+.req-label {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.state-success .request-numbers {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    justify-content: center;
+    flex-direction: row;
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    margin-top: 20px;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-hover);
+}
+
+/* ── Checkbox within form (policy ack) ── */
+.form-group-checkbox {
+    padding: 12px 0 0;
+}
+
+.form-group-checkbox .checkbox-wrapper label {
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ── Hidden disabled options in filtered selects ── */
+select option[disabled] {
+    display: none;
+}

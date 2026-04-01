@@ -1,0 +1,92 @@
+{
+  "corporate_administration": {
+    "name": "Corporate Administration",
+    "description": "Corporate administration data domain",
+    "roles": {
+      "value_stream_operation": {
+        "name": "Value Stream Operation",
+        "description": "Provides data access to business application, business capability, Planisware projects, & EVA (an AI Assistant)."
+      },
+      "value_stream_analyst": {
+        "name": "Value Stream Analyst",
+        "description": "Provides analytical access to corporate administration data with read-only permissions."
+      },
+      "value_stream_admin": {
+        "name": "Value Stream Admin",
+        "description": "Full administrative access to corporate administration data domain."
+      }
+    }
+  },
+  "finance": {
+    "name": "Finance",
+    "description": "Finance and accounting data domain",
+    "roles": {
+      "finance_analyst": {
+        "name": "Finance Analyst",
+        "description": "Read-only access to financial reports and dashboards."
+      },
+      "finance_power_user": {
+        "name": "Finance Power User",
+        "description": "Access to financial data with ability to create custom reports."
+      },
+      "finance_admin": {
+        "name": "Finance Admin",
+        "description": "Full access to all finance data including sensitive compensation data."
+      }
+    }
+  },
+  "supply_chain": {
+    "name": "Supply Chain",
+    "description": "Supply chain and logistics data domain",
+    "roles": {
+      "supply_chain_viewer": {
+        "name": "Supply Chain Viewer",
+        "description": "Read-only access to supply chain metrics and dashboards."
+      },
+      "supply_chain_analyst": {
+        "name": "Supply Chain Analyst",
+        "description": "Analytical access to supply chain data with export capabilities."
+      },
+      "supply_chain_admin": {
+        "name": "Supply Chain Admin",
+        "description": "Full administrative access to supply chain data domain."
+      }
+    }
+  },
+  "quality_and_regulatory": {
+    "name": "Quality & Regulatory",
+    "description": "Quality management and regulatory compliance data",
+    "roles": {
+      "quality_viewer": {
+        "name": "Quality Viewer",
+        "description": "Read-only access to quality metrics and compliance dashboards."
+      },
+      "quality_analyst": {
+        "name": "Quality Analyst",
+        "description": "Analytical access to quality and regulatory data."
+      },
+      "quality_admin": {
+        "name": "Quality Admin",
+        "description": "Full administrative access including audit trail data."
+      }
+    }
+  },
+  "human_resources": {
+    "name": "Human Resources",
+    "description": "HR and people analytics data domain",
+    "roles": {
+      "hr_viewer": {
+        "name": "HR Viewer",
+        "description": "Access to anonymized workforce analytics."
+      },
+      "hr_analyst": {
+        "name": "HR Analyst",
+        "description": "Access to HR data with PII for authorized reporting."
+      },
+      "hr_admin": {
+        "name": "HR Admin",
+        "description": "Full access to all HR data including sensitive personnel records."
+      }
+    }
+  }
+}
