@@ -806,3 +806,125 @@ def push_dq_rules(session) -> dict:
             errors.append(err_msg)
 
     return {"pushed": pushed, "skipped": skipped, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Context Nugget materialization
+# ---------------------------------------------------------------------------
+
+_NUGGET_TYPEDEF_BOOTSTRAPPED = False
+
+
+def bootstrap_nugget_typedef() -> None:
+    """
+    Idempotently create CustomMetadataDef "ContextNugget" in Atlan.
+
+    Safe to call on every startup — skips if already configured or Atlan
+    credentials are not present.
+    """
+    global _NUGGET_TYPEDEF_BOOTSTRAPPED
+    if _NUGGET_TYPEDEF_BOOTSTRAPPED:
+        return
+    if not is_configured():
+        return
+
+    import logging
+    log = logging.getLogger(__name__)
+
+    try:
+        from pyatlan.model.typedef import AttributeDef, CustomMetadataDef
+        from pyatlan.model.enums import AtlanCustomAttributePrimitiveType
+
+        client = _get_client()
+
+        # Check if the typedef already exists
+        try:
+            existing = client.typedef.get_by_name("ContextNugget")
+            if existing:
+                _NUGGET_TYPEDEF_BOOTSTRAPPED = True
+                log.info("ContextNugget CustomMetadataDef already exists — skipping bootstrap")
+                return
+        except Exception:
+            pass  # Not found — continue to create
+
+        str_type = AtlanCustomAttributePrimitiveType.STRING
+        attrs = [
+            AttributeDef.create(client=client, display_name="Content", attribute_type=str_type),
+            AttributeDef.create(client=client, display_name="Nugget Type", attribute_type=str_type),
+            AttributeDef.create(client=client, display_name="Source", attribute_type=str_type),
+            AttributeDef.create(client=client, display_name="Status", attribute_type=str_type),
+            AttributeDef.create(client=client, display_name="Session ID", attribute_type=str_type),
+        ]
+        typedef = CustomMetadataDef.create(display_name="ContextNugget")
+        typedef.attribute_defs = attrs
+        client.typedef.create(typedef)
+        _NUGGET_TYPEDEF_BOOTSTRAPPED = True
+        log.info("ContextNugget CustomMetadataDef created in Atlan")
+
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            f"ContextNugget typedef bootstrap failed (non-blocking): {exc}"
+        )
+
+
+def push_nugget_sync(session: Any, nugget: Any) -> dict[str, Any]:
+    """
+    Create a Link (or CustomEntity) in Atlan representing a Context Nugget.
+
+    Uses a Link asset on the table asset as the materialization strategy —
+    this is the most broadly supported approach in pyatlan and avoids the
+    need for a custom EntityDef.
+
+    Returns dict with 'guid' key on success.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    if not is_configured():
+        return {}
+
+    table_qn: str | None = getattr(session.contract, "atlan_table_qualified_name", None)
+    if not table_qn:
+        log.warning("push_nugget_sync: no atlan_table_qualified_name on contract — skipping")
+        return {}
+
+    try:
+        from pyatlan.model.assets import Link
+
+        client = _get_client()
+
+        # Build a Link asset whose reference URL is a deep-link into the DDLC
+        ddlc_url = os.getenv("DDLC_BASE_URL", "http://localhost:8000")
+        nugget_url = f"{ddlc_url}/contract.html?session={session.id}#nugget-{nugget.id}"
+
+        display_name = f"[Nugget] {nugget.title}"
+
+        # Fetch the table asset to get its GUID for the link parent
+        table_asset = client.asset.get_by_qualified_name(
+            qualified_name=table_qn,
+            asset_type=__import__("pyatlan.model.assets", fromlist=["Table"]).Table,
+        )
+        table_guid = table_asset.guid if table_asset else None
+
+        link = Link.creator(
+            name=display_name,
+            link=nugget_url,
+        )
+        if table_guid:
+            link.anchor = {"guid": table_guid, "typeName": "Referenceable"}
+
+        resp = client.asset.save(link)
+        guid = None
+        if resp and hasattr(resp, "assets_created") and resp.assets_created:
+            from pyatlan.model.assets import Link as LinkAsset
+            created = resp.assets_created(LinkAsset)
+            if created:
+                guid = created[0].guid
+
+        log.info(f"Context Nugget pushed to Atlan as Link: {display_name} (guid={guid})")
+        return {"guid": guid or ""}
+
+    except Exception as exc:
+        log.warning(f"push_nugget_sync failed (non-blocking): {exc}")
+        return {}

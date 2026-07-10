@@ -1,0 +1,76 @@
+# Deploy manifest consumed by the Atlan platform (v3 native app).
+#
+# Surfaces DDLC as a first-class, iframe-embedded app inside the tenant,
+# reached at:
+#   https://<tenant>.atlan.com/apps/ddlc
+#
+# Product-grade profile:
+#   - Temporal worker deployed (DDLCApprovalWorkflow runs durably)
+#   - Dapr statestore/objectstore/secretstore enabled (durable sessions +
+#     credential storage via the platform)
+#   - Split deployment: separate server + worker pods
+#
+# NOTE: `type` and the exact ingress key-nesting are platform-validated.
+# Confirm `type` (utility vs connector) with the Apps platform team before the
+# first deploy — see #pod-builder-experience. Some current-gen tenants also
+# require a `contract/app.pkl` alongside this file; confirm with the contract
+# toolkit owners (Faizan) whether app.pkl is mandatory for this tenant.
+name: ddlc
+display_name: Data Studio
+type: utility
+visibility: private
+build_tag: v1
+self_deployed_runtime: false
+
+deploy:
+  execution_mode: native
+  splitDeploymentEnabled: true
+
+  # Separate worker pod for the Temporal approval workflow. Must be enabled
+  # (not false) — the CI prepare-step rejects `enabled: false`; omit the block
+  # entirely if you ever want server-only.
+  temporalWorkerDeployment:
+    enabled: true
+
+  # Ingress for the iframe-embedded UI. `stripPath: true` strips the prefix so
+  # the FastAPI server (which serves index.html at "/") is reached at the path
+  # root. The LaunchDarkly `iframe_url` must match this exactly (with trailing
+  # slash): https://<tenant>.atlan.com/apps/ddlc/
+  ingress:
+    ui:
+      path: /apps/ddlc
+      stripPath: true
+    # Uncomment to also expose the REST API (/api/*, /workflows/v1/*) directly
+    # to the browser at a stable path. Not required — the UI calls same-origin
+    # relative paths, which resolve under ui.path.
+    # path: /apps/ddlc/api
+
+  # Scale-to-zero. UI ingress is routed through the KEDA HTTP interceptor so the
+  # first page load after a scale-down wakes the pod instead of 404-ing.
+  keda:
+    enabled: true
+
+  env:
+    ATLAN_HEARTBEAT_TIMEOUT_SECONDS: '120'
+    ATLAN_START_TO_CLOSE_TIMEOUT_SECONDS: '3600'
+    ATLAN_TENANT_ID: 'default'
+    # Production starts with an empty store — no demo seed data. Set to 'true'
+    # only for a POV/demo tenant where the seeded walkthrough is wanted.
+    DDLC_SEED_DEMO: 'false'
+    # DDLC persists sessions/nuggets to the object store. The SDK default
+    # ("objectstore") does NOT match the release-prefixed binding the chart
+    # provisions — point it at the real binding name or writes fail with
+    # "output binding not found". Replace {release-name} with the actual
+    # Helm release name for this deploy.
+    DEPLOYMENT_OBJECT_STORE_NAME: '{release-name}-objectstore'
+    # Do NOT set ATLAN_APPLICATION_NAME here — the Helm chart injects it and a
+    # duplicate causes a deploy conflict.
+
+  dapr:
+    objectstore: true          # durable session/nugget storage (store.py)
+    secretstore: true          # ATLAN_API_KEY / credentials from the tenant
+    statestore: true           # SDK workflow state
+    eventstore: false
+    subscription: false
+    configurationstore: false
+    lock: false

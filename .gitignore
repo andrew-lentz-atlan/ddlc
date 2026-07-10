@@ -32,3 +32,13 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Seed data (contains PII — names and emails, local only)
+**/demo_seed.py
+
+# Large / local-only artifacts — NEVER commit to this repo
+atlan-frontend/          # separate Atlan product frontend repo (~350MB), cloned locally by demo-start.sh
+*.db                     # temporal.db, statestore.db, etc.
+governance_pending.csv   # local POV data dump (PII)
+.agent/
+.agents/

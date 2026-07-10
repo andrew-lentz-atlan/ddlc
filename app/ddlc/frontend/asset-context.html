@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context — DDLC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/ddlc.css?v=10">
+    <script>
+        // Atlan iframe auth handshake
+        window.__atlanAuth = null;
+        window.addEventListener('message', function(event) {
+            if (!event.data || typeof event.data !== 'object') return;
+            switch (event.data.type) {
+                case 'ATLAN_HANDSHAKE':
+                    event.source.postMessage({ type: 'IFRAME_READY' }, event.origin);
+                    break;
+                case 'ATLAN_AUTH_CONTEXT':
+                    window.__atlanAuth = event.data.payload;
+                    break;
+                case 'ATLAN_LOGOUT':
+                    window.__atlanAuth = null;
+                    break;
+            }
+        });
+    </script>
+    <style>
+        /* Asset context page — standalone read-only view */
+        body {
+            background: var(--bg);
+            padding: 0;
+            margin: 0;
+        }
+
+        .ctx-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px 24px 48px;
+        }
+
+        .ctx-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 16px;
+        }
+
+        .ctx-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .ctx-subtitle {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+            font-family: var(--font-mono);
+            word-break: break-all;
+        }
+
+        .ctx-qn-badge {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: var(--radius);
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .ctx-empty {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-dim);
+        }
+
+        .ctx-empty-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .ctx-empty-title {
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        .ctx-empty-body {
+            font-size: 0.82rem;
+        }
+
+        /* Read-only nugget card */
+        .ctx-nugget-card {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 10px;
+            background: var(--bg-card);
+            overflow: hidden;
+        }
+
+        .ctx-nugget-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 16px;
+        }
+
+        .ctx-nugget-badges {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .ctx-nugget-body {
+            padding: 0 16px 12px;
+            font-size: 0.84rem;
+            color: var(--text);
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .ctx-nugget-cols {
+            padding: 0 16px 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .ctx-nugget-session-link {
+            padding: 6px 16px;
+            font-size: 0.72rem;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            background: var(--bg-input);
+            display: block;
+            text-decoration: none;
+        }
+
+        .ctx-nugget-session-link:hover {
+            text-decoration: underline;
+        }
+
+        .ctx-section-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            margin: 20px 0 8px;
+        }
+
+        .ctx-loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .ctx-error {
+            padding: 16px;
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
+            border-radius: var(--radius);
+            color: #991b1b;
+            font-size: 0.82rem;
+        }
+
+        .ctx-manage-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--accent, #5277d7);
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: var(--radius-sm, 4px);
+            border: 1px solid var(--accent, #5277d7);
+            background: transparent;
+            transition: background 0.15s, color 0.15s;
+            white-space: nowrap;
+        }
+
+        .ctx-manage-btn:hover {
+            background: var(--accent, #5277d7);
+            color: #fff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="ctx-container">
+        <div class="ctx-header">
+            <div>
+                <div class="ctx-title">Context Nuggets</div>
+                <div class="ctx-subtitle" id="ctxQnDisplay"></div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                <a class="ctx-manage-btn" id="ctxManageLink" href="#" title="Create and manage context nuggets for this asset">
+                    ✎ Manage Context
+                </a>
+                <div style="text-align:right; font-size:0.68rem; color:var(--text-dim);">
+                    Powered by <strong style="color:var(--accent);">DDLC</strong>
+                </div>
+            </div>
+        </div>
+        <div id="ctxContent">
+            <div class="ctx-loading">Loading context...</div>
+        </div>
+    </div>
+
+    <script>
+        const TYPE_LABELS = {
+            business_rule: 'Business Rule',
+            interpretation: 'Interpretation',
+            pii_policy: 'PII Policy',
+            qa_pair: 'Q&A Pair',
+            join_hint: 'Join Hint',
+            context_boundary: 'Context Boundary',
+            freshness_context: 'Freshness Context',
+            test_assertion: 'Test Assertion',
+        };
+
+        const TYPE_ORDER = [
+            'business_rule', 'pii_policy', 'join_hint', 'interpretation',
+            'qa_pair', 'freshness_context', 'context_boundary', 'test_assertion',
+        ];
+
+        function esc(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function getAssetQn() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('qn') || params.get('asset_qn') || '';
+        }
+
+        function renderNuggets(nuggets) {
+            if (!nuggets || nuggets.length === 0) {
+                return `
+                    <div class="ctx-empty">
+                        <div class="ctx-empty-icon">&#128221;</div>
+                        <div class="ctx-empty-title">No context nuggets yet</div>
+                        <div class="ctx-empty-body">
+                            Approved context nuggets for this asset will appear here.<br>
+                            Add them via the Data Studio workflow.
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Group by type in preferred order
+            const byType = {};
+            for (const n of nuggets) {
+                if (!byType[n.nugget_type]) byType[n.nugget_type] = [];
+                byType[n.nugget_type].push(n);
+            }
+
+            let html = `<div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:16px;">${nuggets.length} approved nugget${nuggets.length !== 1 ? 's' : ''}</div>`;
+
+            for (const type of TYPE_ORDER) {
+                const group = byType[type];
+                if (!group) continue;
+                const label = TYPE_LABELS[type] || type;
+                html += `<div class="ctx-section-label">${esc(label)}</div>`;
+                for (const n of group) {
+                    html += renderNuggetCard(n);
+                }
+            }
+
+            // Catch any types not in TYPE_ORDER
+            for (const [type, group] of Object.entries(byType)) {
+                if (TYPE_ORDER.includes(type)) continue;
+                const label = TYPE_LABELS[type] || type;
+                html += `<div class="ctx-section-label">${esc(label)}</div>`;
+                for (const n of group) {
+                    html += renderNuggetCard(n);
+                }
+            }
+
+            return html;
+        }
+
+        function renderNuggetCard(n) {
+            const typeLabel = TYPE_LABELS[n.nugget_type] || n.nugget_type;
+            const colsHtml = n.associated_columns && n.associated_columns.length > 0
+                ? `<div class="ctx-nugget-cols">Columns: ${n.associated_columns.map(c => `<code>${esc(c)}</code>`).join(', ')}</div>`
+                : '';
+            const sessionUrl = n.session_id ? `/contract/${n.session_id}` : null;
+            const sessionLinkHtml = sessionUrl && n.session_title
+                ? `<a class="ctx-nugget-session-link" href="${esc(sessionUrl)}" target="_blank" rel="noopener">From: ${esc(n.session_title)} &rarr;</a>`
+                : '';
+
+            return `
+                <div class="ctx-nugget-card">
+                    <div class="ctx-nugget-header">
+                        <div class="ctx-nugget-badges">
+                            <span class="nugget-type-badge nugget-type-${n.nugget_type}">${esc(typeLabel)}</span>
+                        </div>
+                        <div style="font-size:0.87rem; font-weight:500; color:var(--text);">${esc(n.title)}</div>
+                    </div>
+                    <div class="ctx-nugget-body">${esc(n.content)}</div>
+                    ${colsHtml}
+                    ${sessionLinkHtml}
+                </div>
+            `;
+        }
+
+        async function loadNuggets() {
+            const qn = getAssetQn();
+            const qnDisplay = document.getElementById('ctxQnDisplay');
+            const content = document.getElementById('ctxContent');
+            const manageLink = document.getElementById('ctxManageLink');
+
+            if (!qn) {
+                if (qnDisplay) qnDisplay.textContent = 'No asset specified';
+                content.innerHTML = `<div class="ctx-error">No asset qualified name provided in the URL (?qn=...).</div>`;
+                return;
+            }
+
+            if (qnDisplay) qnDisplay.textContent = qn;
+            if (manageLink) manageLink.href = `/asset-portal?qn=${encodeURIComponent(qn)}`;
+
+            try {
+                const res = await fetch(`/api/nuggets?asset_qn=${encodeURIComponent(qn)}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const nuggets = await res.json();
+
+                // Show empty state with a prominent "Add Nugget" CTA
+                if (!nuggets || nuggets.length === 0) {
+                    content.innerHTML = `
+                        <div class="ctx-empty">
+                            <div class="ctx-empty-icon">&#128221;</div>
+                            <div class="ctx-empty-title">No context nuggets yet</div>
+                            <div class="ctx-empty-body">
+                                Approved context nuggets for this asset will appear here.<br>
+                                <a href="/asset-portal?qn=${encodeURIComponent(qn)}" style="color:var(--accent); text-decoration:none; font-weight:500;">
+                                    ✎ Open Context Studio to add nuggets →
+                                </a>
+                            </div>
+                        </div>`;
+                } else {
+                    content.innerHTML = renderNuggets(nuggets);
+                }
+            } catch (err) {
+                content.innerHTML = `<div class="ctx-error">Failed to load context nuggets: ${esc(err.message)}</div>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadNuggets);
+    </script>
+</body>
+</html>

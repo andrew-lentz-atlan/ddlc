@@ -16,6 +16,7 @@ APPLICATION_MODE controls what starts:
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, List
 
@@ -40,9 +41,14 @@ _FRONTEND_DIR = _HERE / "app" / "ddlc" / "frontend"
 _STATIC_DIR = _FRONTEND_DIR / "static"
 
 # Origins allowed to embed DDLC in an iframe.
-# Covers the Atlan frontend dev server (Vite default port) and common
-# alternatives.  In production this would be locked to the tenant origin.
-_ALLOWED_ORIGINS = [
+#
+# In a native deploy the app is served FROM the tenant origin
+# (https://<tenant>.atlan.com/apps/ddlc), so the Atlan frontend embedding it is
+# same-origin — `frame-ancestors 'self'` (set in the middleware below) already
+# covers that case. The list here is the dev cross-origin allowlist (Atlan
+# frontend dev servers). Any additional production origins can be injected via
+# ATLAN_APP_ALLOWED_ORIGINS (comma-separated) without a code change.
+_DEV_ORIGINS = [
     "http://localhost:3333",  # Atlan frontend (actual dev port)
     "http://localhost:5173",
     "http://localhost:3000",
@@ -50,6 +56,12 @@ _ALLOWED_ORIGINS = [
     "http://127.0.0.1:3333",
     "http://127.0.0.1:5173",
 ]
+_EXTRA_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ATLAN_APP_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+_ALLOWED_ORIGINS = _DEV_ORIGINS + _EXTRA_ORIGINS
 
 
 # ---------------------------------------------------------------------------
@@ -157,12 +169,55 @@ class DDLCApplication(BaseApplication):
         ui_enabled: bool = True,
         has_configmap: bool = False,
     ) -> None:
-        # Seed demo data as part of server startup
-        from app.ddlc.demo_seed import seed_demo_data
+        # Demo seeding is gated by DDLC_SEED_DEMO (default "true" for the POV/demo
+        # build). A real production deployment sets it "false" (see atlan.yaml) —
+        # the store starts empty and users create their own contracts.
+        #
+        # When enabled, we seed only when the store is empty so durable user
+        # sessions survive pod restarts / KEDA scale-to-zero. The manual
+        # /api/demo/seed endpoint still force-reseeds on demand regardless.
+        from app.ddlc import store
 
-        logger.info("Seeding DDLC demo data...")
-        ids = await seed_demo_data()
-        logger.info(f"Seeded {len(ids)} demo sessions.")
+        seed_enabled = os.getenv("DDLC_SEED_DEMO", "true").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if not seed_enabled:
+            logger.info(
+                "DDLC_SEED_DEMO disabled — starting with an empty store (production mode)."
+            )
+        else:
+            existing = await store.list_sessions()
+            if existing:
+                logger.info(
+                    f"Found {len(existing)} persisted DDLC sessions — skipping demo seed."
+                )
+            else:
+                # demo_seed.py is gitignored (contains PII) and absent from a
+                # fresh clone. Import lazily so production (seeding off / empty
+                # store) never hard-depends on it.
+                try:
+                    from app.ddlc.demo_seed import seed_demo_data
+                except ImportError:
+                    logger.info(
+                        "demo_seed module not present (gitignored) — skipping seed."
+                    )
+                else:
+                    logger.info("Empty store — seeding DDLC demo data...")
+                    ids = await seed_demo_data()
+                    logger.info(f"Seeded {len(ids)} demo sessions.")
+
+        # Bootstrap Atlan TypeDefs for Context Nuggets — fire-and-forget so startup
+        # is never blocked by a slow Atlan API call.
+        async def _run_bootstrap():
+            try:
+                from app.ddlc import atlan_assets
+                import asyncio as _asyncio
+                await _asyncio.to_thread(atlan_assets.bootstrap_nugget_typedef)
+            except Exception as _exc:
+                logger.warning(f"Context Nugget typedef bootstrap skipped: {_exc}")
+        asyncio.create_task(_run_bootstrap())
 
         # Use DDLCServer instead of the default APIServer
         self.server = DDLCServer(

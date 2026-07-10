@@ -18,7 +18,10 @@
 
 This branch is the Atlan Application SDK conversion of the standalone DDLC app.
 It runs as a proper Atlan app — iframe-embedded in the Atlan left nav, deployed in a
-tenant's cluster, with Temporal-backed durable workflows and Dapr statestore.
+tenant's cluster, with Temporal-backed durable workflows and Dapr persistence.
+
+> **📋 Picking this up? Read [HANDOVER.md](HANDOVER.md)** — full lay of the land plus the
+> finish-the-job checklist (platform confirmations, CI, AtlanHQ deploy).
 
 ### Migration Progress
 
@@ -27,10 +30,11 @@ tenant's cluster, with Temporal-backed durable workflows and Dapr statestore.
 | 1 | Refactor `server.py` → `APIRouter` (remove standalone `FastAPI()` instance) | ✅ Complete |
 | 2 | Rewrite `main.py` with `DDLCApplication(BaseApplication)` + `DDLCServer(APIServer)` | ✅ Complete |
 | 3 | `DDLCApprovalWorkflow` + `DDLCActivities` (Temporal workflow for approval → active) | ✅ Complete |
-| 4 | Wire approval endpoint to kick off Temporal workflow via `ddlc_workflow_client.py` | ✅ Complete |
-| 5 | `atlan-app-registry.json` (app registration manifest) | ✅ Complete |
-| 6 | `Dockerfile` (based on SDK base image `application-sdk:main-2.3.1`) | ✅ Complete |
-| 7 | `store.py` → Dapr statestore (Redis) for session persistence across restarts | 🔲 For tenant deploy |
+| 4 | Wire approval endpoint to kick off Temporal workflow | ✅ Complete |
+| 5 | `atlan.yaml` v3 native deploy manifest (supersedes `atlan-app-registry.json`) | ✅ Complete |
+| 6 | `Dockerfile` on `app-runtime-base:3` | ✅ Complete |
+| 7 | `store.py` → durable ObjectStore persistence (+ in-memory fallback for local dev) | ✅ Complete |
+| 8 | Platform confirmations (`type`, `app.pkl`), CI in `atlanhq` org, tenant deploy | 🔲 See [HANDOVER.md](HANDOVER.md) |
 
 ### What stays unchanged from `main`
 All DDLC business logic is untouched — only the plumbing changes:

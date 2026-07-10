@@ -29,6 +29,7 @@
     --stage-review: #db2777;
     --stage-approval: #ea580c;
     --stage-active: #059669;
+    --stage-context: #6366f1;
     --stage-rejected: #dc2626;
 
     --radius: 6px;
@@ -294,6 +295,7 @@ body {
 .stage-badge.review { background: #fce7f3; color: var(--stage-review); }
 .stage-badge.approval { background: #ffedd5; color: var(--stage-approval); }
 .stage-badge.active { background: #d1fae5; color: var(--stage-active); }
+.stage-badge.context { background: #e0e7ff; color: var(--stage-context); }
 .stage-badge.rejected { background: #fee2e2; color: var(--stage-rejected); }
 
 .urgency-badge {
@@ -2243,4 +2245,284 @@ body {
     background: var(--bg-hover);
     color: var(--text);
     font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   Context Nuggets
+   --------------------------------------------------------------------------- */
+
+/* Nugget type badge colors */
+.nugget-type-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.nugget-type-business_rule  { background: #e0e7ff; color: #3730a3; }
+.nugget-type-pii_policy     { background: #fee2e2; color: #991b1b; }
+.nugget-type-join_hint      { background: #ffedd5; color: #9a3412; }
+.nugget-type-qa_pair        { background: #ccfbf1; color: #065f46; }
+.nugget-type-interpretation { background: #f3e8ff; color: #6b21a8; }
+.nugget-type-freshness_context { background: #dbeafe; color: #1e40af; }
+.nugget-type-context_boundary  { background: #f0fdf4; color: #166534; }
+.nugget-type-test_assertion    { background: #fef9c3; color: #713f12; }
+
+/* Nugget status badge */
+.nugget-status-badge {
+    font-size: 0.67rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.nugget-status-proposed { background: #fef3c7; color: #92400e; }
+.nugget-status-approved { background: #d1fae5; color: #065f46; }
+
+/* Nugget source badge */
+.nugget-source-badge {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: #f1f5f9;
+    color: #64748b;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Card */
+.nugget-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: border-color 200ms ease;
+}
+
+.nugget-card:hover {
+    border-color: var(--border-focus);
+}
+
+.nugget-card.expanded {
+    border-color: var(--accent);
+}
+
+/* Card header */
+.nugget-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    cursor: pointer;
+    user-select: none;
+    min-height: 42px;
+}
+
+.nugget-card-title {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.nugget-card-preview {
+    flex: 2;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.nugget-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.nugget-card-actions {
+    flex-shrink: 0;
+}
+
+/* Card body (expanded) */
+.nugget-edit-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.nugget-edit-body label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    display: block;
+}
+
+.nugget-edit-body input,
+.nugget-edit-body select,
+.nugget-edit-body textarea {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.85rem;
+}
+
+.nugget-edit-body textarea {
+    min-height: 100px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.nugget-edit-body input:focus,
+.nugget-edit-body select:focus,
+.nugget-edit-body textarea:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+.nugget-edit-body .inline-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.nugget-edit-body .form-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.nugget-edit-body .form-field.full-width {
+    grid-column: 1 / -1;
+}
+
+.nugget-edit-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+}
+
+/* Nugget section header buttons */
+.nugget-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-extract {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--accent);
+    background: #eff4fd;
+    color: var(--accent);
+    cursor: pointer;
+    transition: background var(--transition);
+}
+
+.btn-extract:hover {
+    background: #dce8fb;
+}
+
+.btn-extract:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.export-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.export-dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    min-width: 140px;
+    overflow: hidden;
+}
+
+.export-dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    color: var(--text);
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition);
+}
+
+.export-dropdown-item:hover {
+    background: var(--bg-hover);
+}
+
+/* Add nugget form */
+.nugget-add-form {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-top: 4px;
+    background: var(--bg);
+}
+
+/* AI badge on proposed-from-extract cards */
+.nugget-ai-pill {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: #ede9fe;
+    color: #5b21b6;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Approve button */
+.btn-approve-nugget {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition);
+}
+
+.btn-approve-nugget:hover {
+    background: #a7f3d0;
 }

@@ -14,6 +14,9 @@ const ContractApp = {
     _expandedSLAId: null,
     _expandedServerId: null,
     _expandedRoleId: null,
+    _expandedNuggetId: null,
+    _showAddNugget: false,
+    _exportDropdownOpen: false,
     _approverSearchTimer: null,
     _pendingApprovers: {},
 
@@ -296,6 +299,7 @@ const ContractApp = {
             ${this.renderServersSection()}
             ${this.renderRolesSection()}
             ${this.renderCustomPropertiesSection()}
+            ${this.renderContextNuggetsSection()}
             ${this.renderTeamSection()}
             ${this.renderComments()}
         `;
@@ -2911,9 +2915,322 @@ const ContractApp = {
     },
 
     // --- Review stage ---
+    // -----------------------------------------------------------------------
+    // Context Nuggets
+    // -----------------------------------------------------------------------
+
+    _NUGGET_TYPE_LABELS: {
+        business_rule: 'Business Rule',
+        interpretation: 'Interpretation',
+        pii_policy: 'PII Policy',
+        qa_pair: 'Q&A Pair',
+        join_hint: 'Join Hint',
+        context_boundary: 'Context Boundary',
+        freshness_context: 'Freshness Context',
+        test_assertion: 'Test Assertion',
+    },
+
+    renderContextNuggetsSection() {
+        const nuggets = this.session?.contract?.context_nuggets || [];
+        const stage = this.session?.current_stage;
+        const showExtract = stage === 'active';
+        const approved = nuggets.filter(n => n.status === 'approved').length;
+        const proposed = nuggets.filter(n => n.status === 'proposed').length;
+
+        const headerRight = `
+            <div class="nugget-header-actions">
+                ${showExtract ? `
+                    <button id="extractNuggetBtn" class="btn-extract" onclick="ContractApp.extractNuggets()" title="Use Claude AI to extract context nuggets">
+                        <span id="extractSpinner" style="display:none;">&#8987;</span>
+                        <span>&#10024; AI Extract</span>
+                    </button>
+                ` : ''}
+                ${nuggets.length > 0 ? `
+                    <div class="export-dropdown">
+                        <button class="btn btn-sm" onclick="ContractApp.toggleExportDropdown(event)">Export &#9660;</button>
+                        <div class="export-dropdown-menu" id="nuggetExportMenu" style="display:none;">
+                            <button class="export-dropdown-item" onclick="ContractApp.exportNuggets('json')">JSON</button>
+                            <button class="export-dropdown-item" onclick="ContractApp.exportNuggets('markdown')">Markdown</button>
+                        </div>
+                    </div>
+                ` : ''}
+                <button class="btn btn-sm btn-primary" onclick="ContractApp.showAddNuggetForm()">+ Add</button>
+            </div>
+        `;
+
+        const countBadge = nuggets.length > 0 ? `
+            <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">
+                ${approved > 0 ? `<span style="color:var(--success); font-weight:600;">${approved} approved</span>` : ''}
+                ${approved > 0 && proposed > 0 ? ' &middot; ' : ''}
+                ${proposed > 0 ? `<span style="color:#92400e;">${proposed} proposed</span>` : ''}
+            </span>
+        ` : '';
+
+        const cardsHtml = nuggets.map(n => this.renderNuggetCard(n)).join('');
+        const addFormHtml = this._showAddNugget ? this.renderAddNuggetForm() : '';
+
+        return `
+            <div class="section-panel">
+                <div class="section-header">
+                    <h3>Context Nuggets ${countBadge}</h3>
+                    ${headerRight}
+                </div>
+                <div class="section-body">
+                    ${nuggets.length === 0 && !this._showAddNugget ? `
+                        <div style="color:var(--text-dim); font-size:0.85rem; text-align:center; padding:20px;">
+                            No context nuggets yet. Add knowledge facts about this data asset.
+                        </div>
+                    ` : ''}
+                    ${cardsHtml}
+                    ${addFormHtml}
+                </div>
+            </div>
+        `;
+    },
+
+    renderNuggetCard(n) {
+        const isExpanded = this._expandedNuggetId === n.id;
+        const typeLabel = this._NUGGET_TYPE_LABELS[n.nugget_type] || n.nugget_type;
+        const isAI = n.source === 'ai_extraction' || n.source === 'schema_derived';
+
+        const cardBody = isExpanded ? `
+            <div class="nugget-edit-body">
+                <div class="inline-form-row">
+                    <div class="form-field">
+                        <label>Type</label>
+                        <select id="nuggetType_${n.id}" onchange="">
+                            ${Object.entries(this._NUGGET_TYPE_LABELS).map(([v, l]) =>
+                                `<option value="${v}" ${n.nugget_type === v ? 'selected' : ''}>${l}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Status</label>
+                        <select id="nuggetStatus_${n.id}">
+                            <option value="proposed" ${n.status === 'proposed' ? 'selected' : ''}>Proposed</option>
+                            <option value="approved" ${n.status === 'approved' ? 'selected' : ''}>Approved</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label>Title</label>
+                    <input id="nuggetTitle_${n.id}" value="${this.esc(n.title)}" placeholder="Short, descriptive title">
+                </div>
+                <div class="form-field">
+                    <label>Content</label>
+                    <textarea id="nuggetContent_${n.id}" rows="4" placeholder="The knowledge fact...">${this.esc(n.content)}</textarea>
+                </div>
+                <div class="form-field">
+                    <label>Associated Columns (comma-separated)</label>
+                    <input id="nuggetColumns_${n.id}" value="${this.esc((n.associated_columns || []).join(', '))}" placeholder="e.g. customer_id, status">
+                </div>
+                <div class="form-field">
+                    <label>Tags (comma-separated)</label>
+                    <input id="nuggetTags_${n.id}" value="${this.esc((n.tags || []).join(', '))}" placeholder="e.g. pii, revenue">
+                </div>
+                <div class="nugget-edit-actions">
+                    <button class="btn btn-primary btn-sm" onclick="ContractApp.saveNugget('${n.id}')">Save</button>
+                    ${n.status === 'proposed' ? `
+                        <button class="btn-approve-nugget" onclick="ContractApp.approveNugget('${n.id}')">Approve</button>
+                    ` : ''}
+                    <button class="btn btn-sm" onclick="ContractApp.toggleNuggetCard('${n.id}')">Cancel</button>
+                    <button class="btn btn-sm btn-danger" style="margin-left:auto;" onclick="ContractApp.deleteNugget('${n.id}')">Delete</button>
+                </div>
+            </div>
+        ` : '';
+
+        return `
+            <div class="nugget-card ${isExpanded ? 'expanded' : ''}">
+                <div class="nugget-card-header" onclick="ContractApp.toggleNuggetCard('${n.id}')">
+                    <span class="nugget-type-badge nugget-type-${n.nugget_type}">${this.esc(typeLabel)}</span>
+                    <span class="nugget-card-title">${this.esc(n.title)}</span>
+                    ${!isExpanded ? `<span class="nugget-card-preview">${this.esc(n.content.substring(0, 80))}${n.content.length > 80 ? '…' : ''}</span>` : ''}
+                    <div class="nugget-card-badges">
+                        <span class="nugget-status-badge nugget-status-${n.status}">${n.status}</span>
+                        ${isAI ? `<span class="nugget-ai-pill">AI</span>` : ''}
+                    </div>
+                </div>
+                ${cardBody}
+            </div>
+        `;
+    },
+
+    renderAddNuggetForm() {
+        return `
+            <div class="nugget-add-form">
+                <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:12px; text-transform:uppercase; letter-spacing:.04em;">
+                    Add Context Nugget
+                </div>
+                <div class="nugget-edit-body" style="border:none; padding:0; background:transparent;">
+                    <div class="inline-form-row">
+                        <div class="form-field">
+                            <label>Type</label>
+                            <select id="newNuggetType">
+                                ${Object.entries(this._NUGGET_TYPE_LABELS).map(([v, l]) =>
+                                    `<option value="${v}">${l}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>Title</label>
+                        <input id="newNuggetTitle" placeholder="Short, descriptive title">
+                    </div>
+                    <div class="form-field">
+                        <label>Content</label>
+                        <textarea id="newNuggetContent" rows="3" placeholder="The knowledge fact…"></textarea>
+                    </div>
+                    <div class="form-field">
+                        <label>Associated Columns (comma-separated)</label>
+                        <input id="newNuggetColumns" placeholder="e.g. customer_id, status">
+                    </div>
+                    <div class="nugget-edit-actions">
+                        <button class="btn btn-primary btn-sm" onclick="ContractApp.addNugget()">Add Nugget</button>
+                        <button class="btn btn-sm" onclick="ContractApp.hideAddNuggetForm()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    toggleNuggetCard(id) {
+        this._expandedNuggetId = (this._expandedNuggetId === id) ? null : id;
+        this.renderMain();
+    },
+
+    showAddNuggetForm() {
+        this._showAddNugget = true;
+        this.renderMain();
+    },
+
+    hideAddNuggetForm() {
+        this._showAddNugget = false;
+        this.renderMain();
+    },
+
+    toggleExportDropdown(event) {
+        event.stopPropagation();
+        const menu = document.getElementById('nuggetExportMenu');
+        if (menu) {
+            const isOpen = menu.style.display !== 'none';
+            menu.style.display = isOpen ? 'none' : 'block';
+            if (!isOpen) {
+                const close = (e) => { menu.style.display = 'none'; document.removeEventListener('click', close); };
+                document.addEventListener('click', close);
+            }
+        }
+    },
+
+    async addNugget() {
+        const type = document.getElementById('newNuggetType')?.value;
+        const title = document.getElementById('newNuggetTitle')?.value?.trim();
+        const content = document.getElementById('newNuggetContent')?.value?.trim();
+        const colsRaw = document.getElementById('newNuggetColumns')?.value?.trim();
+        const columns = colsRaw ? colsRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+
+        if (!title) return DDLC.toast.show('Title is required', 'error');
+        if (!content) return DDLC.toast.show('Content is required', 'error');
+
+        try {
+            await DDLC.api.post(`/api/sessions/${this.sessionId}/nuggets`, {
+                nugget_type: type,
+                title,
+                content,
+                associated_columns: columns,
+                source: 'manual',
+            });
+            this._showAddNugget = false;
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async saveNugget(nuggetId) {
+        const type = document.getElementById(`nuggetType_${nuggetId}`)?.value;
+        const title = document.getElementById(`nuggetTitle_${nuggetId}`)?.value?.trim();
+        const content = document.getElementById(`nuggetContent_${nuggetId}`)?.value?.trim();
+        const status = document.getElementById(`nuggetStatus_${nuggetId}`)?.value;
+        const colsRaw = document.getElementById(`nuggetColumns_${nuggetId}`)?.value?.trim();
+        const tagsRaw = document.getElementById(`nuggetTags_${nuggetId}`)?.value?.trim();
+        const columns = colsRaw ? colsRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+        const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+        if (!title) return DDLC.toast.show('Title is required', 'error');
+        if (!content) return DDLC.toast.show('Content is required', 'error');
+
+        try {
+            await DDLC.api.put(`/api/sessions/${this.sessionId}/nuggets/${nuggetId}`, {
+                nugget_type: type,
+                title,
+                content,
+                status,
+                associated_columns: columns,
+                tags,
+            });
+            this._expandedNuggetId = null;
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async approveNugget(nuggetId) {
+        try {
+            await DDLC.api.put(`/api/sessions/${this.sessionId}/nuggets/${nuggetId}`, { status: 'approved' });
+            this._expandedNuggetId = null;
+            await this.load();
+            DDLC.toast.show('Nugget approved');
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async deleteNugget(nuggetId) {
+        try {
+            await DDLC.api.del(`/api/sessions/${this.sessionId}/nuggets/${nuggetId}`);
+            this._expandedNuggetId = null;
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message, 'error');
+        }
+    },
+
+    async extractNuggets() {
+        const btn = document.getElementById('extractNuggetBtn');
+        const spinner = document.getElementById('extractSpinner');
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.style.display = 'inline';
+
+        try {
+            const result = await DDLC.api.post(`/api/sessions/${this.sessionId}/nuggets/extract`, {});
+            const count = result.count || 0;
+            DDLC.toast.show(`${count} nugget${count !== 1 ? 's' : ''} extracted`);
+            await this.load();
+        } catch (err) {
+            DDLC.toast.show(err.message || 'Extraction failed', 'error');
+            if (btn) btn.disabled = false;
+            if (spinner) spinner.style.display = 'none';
+        }
+    },
+
+    exportNuggets(format) {
+        const url = `/api/sessions/${this.sessionId}/nuggets/export?format=${format}`;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Close dropdown
+        const menu = document.getElementById('nuggetExportMenu');
+        if (menu) menu.style.display = 'none';
+    },
+
     renderReviewStage() {
         return `
             ${this.renderReadOnlyContract()}
+            ${this.renderContextNuggetsSection()}
             ${this.renderComments()}
         `;
     },
@@ -3052,6 +3369,7 @@ const ContractApp = {
     renderApprovalStage() {
         return `
             ${this.renderReadOnlyContract()}
+            ${this.renderContextNuggetsSection()}
             <div class="section-panel">
                 <div class="section-body">
                     <div class="approval-panel">
@@ -3124,6 +3442,7 @@ const ContractApp = {
                     </div>
                 </div>
             </div>
+            ${this.renderContextNuggetsSection()}
             ${this.renderReadOnlyContract()}
         `;
     },

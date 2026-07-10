@@ -25,6 +25,7 @@ from app.ddlc.models import (
     AccessLevel,
     ColumnSource,
     Comment,
+    ContextNugget,
     ContractRequest,
     ContractRole,
     ContractStatus,
@@ -33,6 +34,9 @@ from app.ddlc.models import (
     DDLCStage,
     LogicalType,
     MonitorMethod,
+    NuggetSource,
+    NuggetStatus,
+    NuggetType,
     ODCSContract,
     Participant,
     QualityCheck,
@@ -84,7 +88,7 @@ async def reseed_demo_data():
     """Re-seed demo data (clears existing sessions first)."""
     from app.ddlc.demo_seed import seed_demo_data
 
-    store.clear_all()
+    await store.clear_all()
     ids = await seed_demo_data()
     return JSONResponse(content={"ok": True, "seeded": len(ids), "session_ids": ids})
 
@@ -927,6 +931,416 @@ async def delete_custom_property(session_id: str, prop_id: str):
 
     await store.save_session(session)
     return JSONResponse(content={"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Context Nuggets
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/sessions/{session_id}/nuggets", response_class=JSONResponse)
+async def create_nugget(session_id: str, payload: dict[str, Any]):
+    """Create a new context nugget."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    nugget = ContextNugget(
+        nugget_type=NuggetType(payload.get("nugget_type", NuggetType.BUSINESS_RULE)),
+        title=payload.get("title", ""),
+        content=payload.get("content", ""),
+        source=NuggetSource(payload.get("source", NuggetSource.MANUAL)),
+        associated_columns=payload.get("associated_columns", []),
+        tags=payload.get("tags", []),
+    )
+    session.contract.context_nuggets.append(nugget)
+    await store.save_session(session)
+    return JSONResponse(content=nugget.model_dump(mode="json"), status_code=201)
+
+
+@router.put("/api/sessions/{session_id}/nuggets/{nugget_id}", response_class=JSONResponse)
+async def update_nugget(session_id: str, nugget_id: str, payload: dict[str, Any]):
+    """Update or approve a context nugget."""
+    import asyncio
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    nugget = next((n for n in session.contract.context_nuggets if n.id == nugget_id), None)
+    if not nugget:
+        raise HTTPException(status_code=404, detail="Nugget not found")
+
+    was_proposed = nugget.status == NuggetStatus.PROPOSED
+
+    # Apply updates
+    if "nugget_type" in payload:
+        nugget.nugget_type = NuggetType(payload["nugget_type"])
+    if "title" in payload:
+        nugget.title = payload["title"]
+    if "content" in payload:
+        nugget.content = payload["content"]
+    if "associated_columns" in payload:
+        nugget.associated_columns = payload["associated_columns"]
+    if "tags" in payload:
+        nugget.tags = payload["tags"]
+    if "status" in payload:
+        new_status = NuggetStatus(payload["status"])
+        if new_status == NuggetStatus.APPROVED and was_proposed:
+            nugget.approved_at = datetime.now(timezone.utc)
+            if session.contract.atlan_table_qualified_name:
+                nugget.associated_asset_qn = session.contract.atlan_table_qualified_name
+            # Best-effort Atlan push (non-blocking)
+            try:
+                from app.ddlc import atlan_assets
+                if atlan_assets.is_configured():
+                    result = await asyncio.to_thread(atlan_assets.push_nugget_sync, session, nugget)
+                    nugget.atlan_entity_guid = result.get("guid")
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(f"Atlan nugget push failed (non-blocking): {exc}")
+        nugget.status = new_status
+
+    await store.save_session(session)
+    return JSONResponse(content=nugget.model_dump(mode="json"))
+
+
+@router.delete("/api/sessions/{session_id}/nuggets/{nugget_id}")
+async def delete_nugget(session_id: str, nugget_id: str):
+    """Delete a context nugget."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    original_len = len(session.contract.context_nuggets)
+    session.contract.context_nuggets = [
+        n for n in session.contract.context_nuggets if n.id != nugget_id
+    ]
+    if len(session.contract.context_nuggets) == original_len:
+        raise HTTPException(status_code=404, detail="Nugget not found")
+
+    await store.save_session(session)
+    return JSONResponse(content={"ok": True})
+
+
+@router.post("/api/sessions/{session_id}/nuggets/extract", response_class=JSONResponse)
+async def extract_nuggets(session_id: str):
+    """Extract context nuggets from session using Claude AI."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    from app.ddlc.nugget_extractor import extract_nuggets_from_session
+    nuggets = await extract_nuggets_from_session(session)
+    session.contract.context_nuggets.extend(nuggets)
+    await store.save_session(session)
+    return JSONResponse(content={
+        "ok": True,
+        "count": len(nuggets),
+        "nuggets": [n.model_dump(mode="json") for n in nuggets],
+    }, status_code=201)
+
+
+@router.get("/api/sessions/{session_id}/nuggets/export")
+async def export_nuggets(session_id: str, format: str = Query("json")):
+    """Export approved nuggets as JSON or Markdown."""
+    session = await store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    from app.ddlc.nugget_export import export_json, export_markdown
+    approved = [n for n in session.contract.context_nuggets if n.status == NuggetStatus.APPROVED]
+    contract_name = session.contract.name or "contract"
+
+    if format == "markdown":
+        content = export_markdown(approved, contract_name)
+        filename = f"{contract_name}_context_nuggets.md"
+        return Response(
+            content=content,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    else:
+        content = export_json(approved)
+        filename = f"{contract_name}_context_nuggets.json"
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+
+@router.get("/api/nuggets", response_class=JSONResponse)
+async def get_nuggets_for_asset(asset_qn: str = Query(..., alias="asset_qn")):
+    """Get approved nuggets for an asset (cross-session query for asset-context page).
+
+    Includes both session-linked and standalone nuggets.
+    """
+    results = []
+
+    # Standalone approved nuggets for this asset
+    standalone = await store.list_standalone_nuggets_for_asset(asset_qn)
+    for nugget in standalone:
+        if nugget.status == NuggetStatus.APPROVED:
+            results.append({
+                **nugget.model_dump(mode="json"),
+                "session_id": None,
+                "session_title": None,
+                "contract_name": None,
+            })
+
+    # Session-linked approved nuggets
+    sessions = await store.list_sessions()
+    for session in sessions:
+        for nugget in session.contract.context_nuggets:
+            if nugget.status == NuggetStatus.APPROVED and nugget.associated_asset_qn == asset_qn:
+                results.append({
+                    **nugget.model_dump(mode="json"),
+                    "session_id": session.id,
+                    "session_title": session.request.title,
+                    "contract_name": session.contract.name,
+                })
+    return JSONResponse(content=results)
+
+
+@router.get("/asset-context")
+async def asset_context_page():
+    """Serve the read-only asset context page (for Atlan asset-profile-tab iframe)."""
+    asset_context_path = Path(__file__).parent / "frontend" / "asset-context.html"
+    if not asset_context_path.exists():
+        raise HTTPException(status_code=404, detail="asset-context.html not found")
+    return HTMLResponse(content=asset_context_path.read_text())
+
+
+# ---------------------------------------------------------------------------
+# Asset Context Portal — standalone nuggets (no DDLC session required)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/asset-portal")
+async def asset_portal_page():
+    """Serve the Asset Context Portal — create/manage nuggets for existing assets."""
+    portal_path = Path(__file__).parent / "frontend" / "asset-portal.html"
+    if not portal_path.exists():
+        raise HTTPException(status_code=404, detail="asset-portal.html not found")
+    return HTMLResponse(content=portal_path.read_text())
+
+
+@router.get("/api/asset-nuggets", response_class=JSONResponse)
+async def get_asset_nuggets(asset_qn: str = Query(..., alias="asset_qn")):
+    """Get all nuggets for an asset: standalone + approved session nuggets."""
+    # Standalone nuggets for this asset
+    standalone = await store.list_standalone_nuggets_for_asset(asset_qn)
+    results = [
+        {**n.model_dump(mode="json"), "session_id": None, "session_title": None, "origin": "standalone"}
+        for n in standalone
+    ]
+    # Also include approved session nuggets for the same asset
+    sessions = await store.list_sessions()
+    for session in sessions:
+        for nugget in session.contract.context_nuggets:
+            if nugget.status == NuggetStatus.APPROVED and nugget.associated_asset_qn == asset_qn:
+                results.append({
+                    **nugget.model_dump(mode="json"),
+                    "session_id": session.id,
+                    "session_title": session.request.title,
+                    "origin": "session",
+                })
+    return JSONResponse(content=results)
+
+
+@router.post("/api/asset-nuggets", response_class=JSONResponse)
+async def create_asset_nugget(payload: dict[str, Any]):
+    """Create a standalone nugget for an existing asset."""
+    asset_qn = payload.get("asset_qn", "").strip()
+    if not asset_qn:
+        raise HTTPException(status_code=400, detail="asset_qn is required")
+
+    nugget_type_raw = payload.get("nugget_type", "interpretation")
+    try:
+        nugget_type = NuggetType(nugget_type_raw)
+    except ValueError:
+        nugget_type = NuggetType.INTERPRETATION
+
+    nugget = ContextNugget(
+        nugget_type=nugget_type,
+        title=str(payload.get("title", "")).strip() or "Untitled",
+        content=str(payload.get("content", "")).strip(),
+        status=NuggetStatus.PROPOSED,
+        source=NuggetSource.MANUAL,
+        associated_columns=payload.get("associated_columns", []),
+        tags=payload.get("tags", []),
+        associated_asset_qn=asset_qn,
+    )
+    await store.save_standalone_nugget(nugget)
+    return JSONResponse(content=nugget.model_dump(mode="json"))
+
+
+@router.put("/api/asset-nuggets/{nugget_id}", response_class=JSONResponse)
+async def update_asset_nugget(nugget_id: str, payload: dict[str, Any]):
+    """Update a standalone nugget (including approve)."""
+    nugget = await store.get_standalone_nugget(nugget_id)
+    if not nugget:
+        raise HTTPException(status_code=404, detail="Nugget not found")
+
+    if "nugget_type" in payload:
+        try:
+            nugget.nugget_type = NuggetType(payload["nugget_type"])
+        except ValueError:
+            pass
+    if "title" in payload:
+        nugget.title = str(payload["title"]).strip() or nugget.title
+    if "content" in payload:
+        nugget.content = str(payload["content"])
+    if "associated_columns" in payload:
+        nugget.associated_columns = payload["associated_columns"] or []
+    if "tags" in payload:
+        nugget.tags = payload["tags"] or []
+
+    # Handle approval
+    if payload.get("status") == NuggetStatus.APPROVED.value and nugget.status == NuggetStatus.PROPOSED:
+        nugget.status = NuggetStatus.APPROVED
+        nugget.approved_at = datetime.now(timezone.utc)
+
+    await store.save_standalone_nugget(nugget)
+    return JSONResponse(content=nugget.model_dump(mode="json"))
+
+
+@router.delete("/api/asset-nuggets/{nugget_id}", response_class=JSONResponse)
+async def delete_asset_nugget(nugget_id: str):
+    """Delete a standalone nugget."""
+    deleted = await store.delete_standalone_nugget(nugget_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Nugget not found")
+    return JSONResponse(content={"ok": True})
+
+
+@router.post("/api/asset-nuggets/extract", response_class=JSONResponse)
+async def extract_asset_nuggets(payload: dict[str, Any]):
+    """AI extraction of nuggets for a standalone asset (no DDLC session)."""
+    import os
+    asset_qn = payload.get("asset_qn", "").strip()
+    if not asset_qn:
+        raise HTTPException(status_code=400, detail="asset_qn is required")
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        # Return a few placeholder nuggets as fallback
+        fallbacks = [
+            ContextNugget(
+                nugget_type=NuggetType.BUSINESS_RULE,
+                title=f"Active Record Definition",
+                content="Review the data asset to confirm which status/flag values indicate an active or valid record. Document the filter criteria here.",
+                status=NuggetStatus.PROPOSED,
+                source=NuggetSource.AI_EXTRACTION,
+                associated_asset_qn=asset_qn,
+            ),
+            ContextNugget(
+                nugget_type=NuggetType.INTERPRETATION,
+                title="Metric Scope & Exclusions",
+                content="Clarify which records should be included or excluded when calculating aggregate metrics. Document edge cases (nulls, cancelled records, test data).",
+                status=NuggetStatus.PROPOSED,
+                source=NuggetSource.AI_EXTRACTION,
+                associated_asset_qn=asset_qn,
+            ),
+        ]
+        for n in fallbacks:
+            await store.save_standalone_nugget(n)
+        return JSONResponse(content={"nuggets": [n.model_dump(mode="json") for n in fallbacks]})
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        prompt = f"""You are analyzing a data asset to extract reusable knowledge objects called "Context Nuggets".
+
+ASSET: {asset_qn}
+
+The qualified name above follows the pattern: connector/connection/database/schema/table
+
+Extract 3-5 discrete, reusable knowledge facts that someone querying this data asset would need to know.
+
+Return ONLY a JSON array:
+[
+  {{
+    "type": "<one of: business_rule, interpretation, pii_policy, qa_pair, join_hint, context_boundary, freshness_context, test_assertion>",
+    "title": "<concise title, max 60 chars>",
+    "content": "<the knowledge fact, 1-3 sentences>",
+    "associated_columns": ["col1"]
+  }}
+]
+
+Focus on: business rules, PII policies, join hints, metric interpretations, freshness context.
+Base your suggestions on what is commonly known about data assets with this name pattern.
+Do not include generic advice — be specific to this asset name."""
+
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = message.content[0].text
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        import json as _json
+        items = _json.loads(text[start:end]) if start != -1 and end > 0 else []
+        type_map = {t.value: t for t in NuggetType}
+        nuggets = []
+        for item in items:
+            raw_type = item.get("type", "interpretation")
+            nugget = ContextNugget(
+                nugget_type=type_map.get(raw_type, NuggetType.INTERPRETATION),
+                title=str(item.get("title", "Extracted Nugget"))[:120],
+                content=str(item.get("content", "")),
+                status=NuggetStatus.PROPOSED,
+                source=NuggetSource.AI_EXTRACTION,
+                associated_columns=item.get("associated_columns", []),
+                associated_asset_qn=asset_qn,
+            )
+            await store.save_standalone_nugget(nugget)
+            nuggets.append(nugget)
+        return JSONResponse(content={"nuggets": [n.model_dump(mode="json") for n in nuggets]})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"AI extraction failed: {exc}")
+
+
+@router.get("/api/asset-nuggets/export")
+async def export_asset_nuggets(
+    asset_qn: str = Query(..., alias="asset_qn"),
+    format: str = Query("json"),
+):
+    """Export all nuggets for an asset (standalone + session-linked) as JSON or Markdown."""
+    from app.ddlc.nugget_export import export_json, export_markdown
+
+    # Collect standalone nuggets
+    standalone = await store.list_standalone_nuggets_for_asset(asset_qn)
+    all_nuggets = list(standalone)
+
+    # Collect approved session nuggets for this asset
+    sessions = await store.list_sessions()
+    for session in sessions:
+        for nugget in session.contract.context_nuggets:
+            if nugget.status == NuggetStatus.APPROVED and nugget.associated_asset_qn == asset_qn:
+                all_nuggets.append(nugget)
+
+    approved = [n for n in all_nuggets if n.status == NuggetStatus.APPROVED]
+    # Use the last segment of the QN as the name
+    asset_name = asset_qn.split("/")[-1] if asset_qn else "asset"
+
+    if format == "markdown":
+        content = export_markdown(approved, asset_name)
+        filename = f"{asset_name}_context_nuggets.md"
+        return Response(
+            content=content,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    else:
+        content = export_json(approved)
+        filename = f"{asset_name}_context_nuggets.json"
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
 
 # ---------------------------------------------------------------------------

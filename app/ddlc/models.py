@@ -147,6 +147,57 @@ class AccessLevel(str, Enum):
     ADMIN = "admin"
 
 
+class NuggetType(str, Enum):
+    """Context Nugget knowledge type."""
+
+    BUSINESS_RULE = "business_rule"
+    INTERPRETATION = "interpretation"
+    PII_POLICY = "pii_policy"
+    QA_PAIR = "qa_pair"
+    JOIN_HINT = "join_hint"
+    CONTEXT_BOUNDARY = "context_boundary"
+    FRESHNESS_CONTEXT = "freshness_context"
+    TEST_ASSERTION = "test_assertion"
+
+
+class NuggetStatus(str, Enum):
+    """Context Nugget lifecycle status."""
+
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+
+
+class NuggetSource(str, Enum):
+    """How a Context Nugget was created."""
+
+    MANUAL = "manual"
+    AI_EXTRACTION = "ai_extraction"
+    SCHEMA_DERIVED = "schema_derived"
+    DQ_DERIVED = "dq_derived"
+
+
+# ---------------------------------------------------------------------------
+# Context Nuggets
+# ---------------------------------------------------------------------------
+
+
+class ContextNugget(BaseModel):
+    """A discrete, governed knowledge object about a data asset."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    nugget_type: NuggetType
+    title: str
+    content: str
+    status: NuggetStatus = NuggetStatus.PROPOSED
+    source: NuggetSource = NuggetSource.MANUAL
+    associated_columns: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    associated_asset_qn: Optional[str] = None  # Atlan table QN, set on approval if ACTIVE
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    approved_at: Optional[datetime] = None
+    atlan_entity_guid: Optional[str] = None  # Set after Atlan CustomEntity push
+
+
 # ---------------------------------------------------------------------------
 # Participant / team
 # ---------------------------------------------------------------------------
@@ -336,6 +387,7 @@ class ODCSContract(BaseModel):
     servers: List[Server] = Field(default_factory=list)
     roles: List[ContractRole] = Field(default_factory=list)
     custom_properties: List[CustomProperty] = Field(default_factory=list)
+    context_nuggets: List[ContextNugget] = Field(default_factory=list)
     # Phase 6 — set when placeholder asset is registered in Atlan on APPROVAL → ACTIVE
     atlan_table_qualified_name: Optional[str] = None
     atlan_table_guid: Optional[str] = None
